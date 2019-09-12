@@ -1,26 +1,26 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Copyright 2019 Yevhenii Selivanov.
 
-#include "MyCharacter.h"
+#include "LevelActors/PlayerCharacter.h"
 
 #include "Animation/AnimInstance.h"			   //UAnimInstance
 #include "Components/SkeletalMeshComponent.h"  // USkeletalMesh
 #include "Components/StaticMeshComponent.h"	// UStaticMeshComponent
-#include "Components/TextRenderComponent.h"	//UTextRenderComponent
+#include "Kismet/KismetMathLibrary.h"		   //test character rotation ----
 #include "UObject/ConstructorHelpers.h"		   // ConstructorHelpers
 
-#include "BombActor.h"
 #include "Bomber.h"
 #include "GeneratedMap.h"
+#include "LevelActors/BombActor.h"
 #include "MapComponent.h"
 #include "MyAIController.h"
-#include "MyGameInstance.h"
 #include "SingletonLibrary.h"
 
 // Sets default values
-AMyCharacter::AMyCharacter()
+APlayerCharacter::APlayerCharacter()
 {
-	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Set this character to don't call Tick()
 	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	// Set the default AI controller class
 	AIControllerClass = AMyAIController::StaticClass();
@@ -42,7 +42,7 @@ AMyCharacter::AMyCharacter()
 	{
 		if (SkeletalMeshFinderArray[i].Succeeded())
 		{
-			SkeletalMeshes.Add(SkeletalMeshFinderArray[i].Object);
+			SkeletalMeshes.Emplace(SkeletalMeshFinderArray[i].Object);
 			if (i == 0) GetMesh()->SetSkeletalMesh(SkeletalMeshFinderArray[i].Object);  // preview
 		}
 	}
@@ -76,28 +76,21 @@ AMyCharacter::AMyCharacter()
 	{
 		if (MaterialsFinderArray[i].Succeeded())
 		{
-			NameplateMaterials.Add(MaterialsFinderArray[i].Object);
+			NameplateMaterials.Emplace(MaterialsFinderArray[i].Object);
 		}
 	}
-
-	// Initialize the nickname text render component
-	NicknameTextRender = CreateDefaultSubobject<UTextRenderComponent>(TEXT("NicknameTextRender"));
-	NicknameTextRender->SetupAttachment(NameplateMeshComponent);
-	NicknameTextRender->SetRelativeLocation(FVector(0.f, 0.f, 10.f));
-	NicknameTextRender->SetRelativeRotation(FRotator(90.f, -90.f, 180.f));
-	NicknameTextRender->SetHorizontalAlignment(EHTA_Center);
-	NicknameTextRender->SetVerticalAlignment(EVRTA_TextCenter);
-	NicknameTextRender->SetTextRenderColor(FColor::Black);
-	NicknameTextRender->SetWorldSize(56.f);
-	NicknameTextRender->SetText(DEFAULT_NICKNAME);
 }
 
-// Called to bind functionality to input
-void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+// Finds and rotates the self at the current character's location to point at the specified location.
+void APlayerCharacter::RotateToLocation(const FVector& Location) const
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	PlayerInputComponent->BindAction("SpaceEvent", IE_Pressed, this, &AMyCharacter::SpawnBomb);
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (MeshComponent)
+	{
+		FRotator NewRotation = FRotator::ZeroRotator;
+		NewRotation.Yaw = UKismetMathLibrary::FindLookAtRotation(GetActorLocation(), Location).Yaw;
+		MeshComponent->SetRelativeRotation(NewRotation);
+	}
 }
 
 /* ---------------------------------------------------
@@ -105,7 +98,7 @@ void AMyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
  * --------------------------------------------------- */
 
 // Called when the game starts or when spawned
-void AMyCharacter::BeginPlay()
+void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -116,7 +109,7 @@ void AMyCharacter::BeginPlay()
 		GetMesh()->SetAnimInstanceClass(MyAnimClass);
 	}
 
-	// Posses the player controller
+	// Posses the controller
 	if (CharacterID_ == 0)  // Is the player (not AI)
 	{
 		APlayerController* PlayerController = UGameplayStatics::GetPlayerController(GetWorld(), 0);
@@ -125,29 +118,34 @@ void AMyCharacter::BeginPlay()
 			PlayerController->Possess(this);
 		}
 	}
-	else
+	else								// has AI controller
+		if (!IS_VALID(MyAIController))  // was not spawned early
 	{
-		auto MyAIController = GetWorld()->SpawnActor<AMyAIController>(AIControllerClass, GetActorTransform());
+		MyAIController = GetWorld()->SpawnActor<AMyAIController>(AIControllerClass, GetActorTransform());
 		MyAIController->Possess(this);
 	}
 }
 
 // Called when an instance of this class is placed (in editor) or spawned
-void AMyCharacter::OnConstruction(const FTransform& Transform)
+void APlayerCharacter::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	if (IS_VALID(MapComponent) == false					// this component is not valid for owner construction
-		|| !IsValid(USingletonLibrary::GetLevelMap()))  // the level map is not valid
+	const AGeneratedMap* LevelMap = USingletonLibrary::GetLevelMap();
+	if (IS_TRANSIENT(this)		   // This actor is transient
+		|| !IsValid(MapComponent)  // Is not valid for map construction
+		|| !LevelMap)			   // the level map is not valid or transient
 	{
 		return;
 	}
-
 	// Construct the actor's map component
 	MapComponent->OnMapComponentConstruction();
 
-	// Set the character ID
-	CharacterID_ = USingletonLibrary::GetLevelMap()->CharactersOnMap.IndexOfByKey(this);
+	// Setting an ID to the player character as his position in the array
+	FCells PlayersCells;
+	LevelMap->IntersectCellsByTypes(PlayersCells, TO_FLAG(EActorType::Player));
+	CharacterID_ = PlayersCells.FindId(MapComponent->GetCell()).AsInteger();
+	check(CharacterID_ != INDEX_NONE && "The character was not found on the Level Map");
 
 	// Set a character skeletal mesh
 	if (GetMesh())
@@ -163,26 +161,12 @@ void AMyCharacter::OnConstruction(const FTransform& Transform)
 		NameplateMeshComponent->SetMaterial(0, NameplateMaterials[MaterialNo]);
 	}
 
-	// Set the nickname
-	if (NicknameTextRender)
-	{
-		if (CharacterID_ == 0)  // is a player
-		{
-			UMyGameInstance* MyGameInstance = USingletonLibrary::GetMyGameInstance(this);
-			NicknameTextRender->SetText(MyGameInstance ? MyGameInstance->Nickname : DEFAULT_NICKNAME);
-		}
-		else  // is a bot
-		{
-			NicknameTextRender->SetText(FText::FromString(TEXT("AI")));
-		}
-	}
-
 	// Spawn or destroy controller of specific ai with enabled visualization
 #if WITH_EDITOR
 	if (USingletonLibrary::IsEditorNotPieWorld()  // [IsEditorNotPieWorld] only
 		&& CharacterID_ > 0)					  // Is a bot
 	{
-		const auto MyAIController = Cast<AMyAIController>(GetController());
+		MyAIController = Cast<AMyAIController>(GetController());
 		if (MapComponent->bShouldShowRenders == false)
 		{
 			if (MyAIController) MyAIController->Destroy();
@@ -202,26 +186,35 @@ void AMyCharacter::OnConstruction(const FTransform& Transform)
 	USingletonLibrary::PrintToLog(this, "OnConstruction \t New rotation:", GetActorRotation().ToString());
 }
 
-// Called when this actor is explicitly being destroyed
-void AMyCharacter::Destroyed()
+// Called to bind functionality to input
+void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	UWorld* const World = GetWorld();
-	if (World != nullptr							  // World is not null
-		&& IsValid(USingletonLibrary::GetLevelMap())  // The Level Map is valid
-		&& IS_TRANSIENT(this) == false)				  // Component is not transient
-	{
-		USingletonLibrary::GetLevelMap()->CharactersOnMap.Remove(this);
-		USingletonLibrary::PrintToLog(this, "Destroyed", "Removed from TSet");
-	}
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
 
-	// Call the base class version
-	Super::Destroyed();
+	PlayerInputComponent->BindAxis("MoveUpDown", this, &APlayerCharacter::OnMoveUpDown);
+	PlayerInputComponent->BindAxis("MoveRightLeft", this, &APlayerCharacter::OnMoveRightLeft);
+	PlayerInputComponent->BindAction("SpaceEvent", IE_Pressed, this, &APlayerCharacter::SpawnBomb);
+}
+
+// Adds the movement input along the given world direction vector.
+void APlayerCharacter::AddMovementInput(FVector WorldDirection, float ScaleValue, bool bForce)
+{
+	if (ScaleValue != 0)
+	{
+		// Move the character
+		Super::AddMovementInput(WorldDirection, ScaleValue, bForce);
+
+		// Rotate the character
+		RotateToLocation(GetActorLocation() + ScaleValue * WorldDirection);
+	}
 }
 
 // Spawns bomb on character position
-void AMyCharacter::SpawnBomb()
+void APlayerCharacter::SpawnBomb()
 {
-	if (!IsValid(USingletonLibrary::GetLevelMap())	// The Level Map is not valid
+	AGeneratedMap* LevelMap = USingletonLibrary::GetLevelMap();
+	if (LevelMap == nullptr							  // The Level Map is not accessible
+		|| IsValid(MapComponent) == false			  // The Map Component is not valid or transient
 		|| Powerups_.FireN <= 0						  // Null length of explosion
 		|| Powerups_.BombN <= 0						  // No more bombs
 		|| USingletonLibrary::IsEditorNotPieWorld())  // Should not spawn bomb in PIE
@@ -230,9 +223,9 @@ void AMyCharacter::SpawnBomb()
 	}
 
 	// Spawn bomb
-	auto Bomb = GetWorld()->SpawnActor<ABombActor>(USingletonLibrary::FindClassByActorType(EActorTypeEnum::Bomb), GetActorTransform());
+	auto Bomb = Cast<ABombActor>(LevelMap->SpawnActorByType(EActorType::Bomb, MapComponent->GetCell()));
 
-	// Update material of mesh
+	// Updating explosion cells
 	if (Bomb != nullptr)
 	{
 		Bomb->InitializeBombProperties(Powerups_.BombN, Powerups_.FireN, CharacterID_);
