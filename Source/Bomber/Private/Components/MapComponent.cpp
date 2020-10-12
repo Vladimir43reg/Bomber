@@ -1,11 +1,11 @@
 ﻿// Copyright 2020 Yevhenii Selivanov.
 
-#include "MapComponent.h"
+#include "Components/MapComponent.h"
 //---
 #include "Bomber.h"
 #include "GeneratedMap.h"
-#include "LevelActorDataAsset.h"
-#include "SingletonLibrary.h"
+#include "Globals/SingletonLibrary.h"
+#include "Globals/LevelActorDataAsset.h"
 //---
 #include "Components/BoxComponent.h"
 
@@ -22,7 +22,7 @@ UMapComponent::UMapComponent()
 }
 
 // Updates a owner's state. Should be called in the owner's OnConstruction event.
-void UMapComponent::OnComponentConstruct(UMeshComponent* MeshComponent, const FLevelActorMeshRow& ComparedMeshRowTypes)
+void UMapComponent::OnConstruction()
 {
 	AGeneratedMap* LevelMap = USingletonLibrary::GetLevelMap();
 	AActor* Owner = GetOwner();
@@ -32,19 +32,6 @@ void UMapComponent::OnComponentConstruct(UMeshComponent* MeshComponent, const FL
 		return;
 	}
 
-	// Set mesh
-	if(MeshComponent)
-	{
-		MeshComponentInternal = MeshComponent;
-		FLevelActorMeshRow ComparedMeshRow = ComparedMeshRowTypes;
-		if(ComparedMeshRow.LevelType == ELT::None)
-		{
-			ComparedMeshRow.LevelType = LevelMap->GetLevelType();
-		}
-		ActorDataAssetInternal->GetMeshRowByTypes(ComparedMeshRow);
-		SetMesh(ComparedMeshRow.Mesh);
-	}
-
 	// Find new Location at dragging and update-delegate
 	USingletonLibrary::PrintToLog(Owner, "OnMapComponentConstruction", "-> \t FCell()");
 	LevelMap->SetNearestCell(this);
@@ -52,6 +39,15 @@ void UMapComponent::OnComponentConstruct(UMeshComponent* MeshComponent, const FL
 	// Owner updating
 	USingletonLibrary::PrintToLog(Owner, "OnMapComponentConstruction", "-> \t AddToGrid");
 	USingletonLibrary::GetLevelMap()->AddToGrid(Cell, this);
+
+	// Set default mesh asset
+	TArray<ULevelActorRow*> OutRows;
+	ActorDataAssetInternal->GetRowsByLevelType(OutRows, TO_FLAG(USingletonLibrary::GetLevelType()));
+	ULevelActorRow* FoundRow = OutRows.IsValidIndex(0) ? OutRows[0] : nullptr;
+	if (FoundRow)
+	{
+		SetMesh(FoundRow->Mesh);
+	}
 
 #if WITH_EDITOR	 // [IsEditorNotPieWorld]
 	if (USingletonLibrary::IsEditorNotPieWorld())
@@ -68,12 +64,17 @@ void UMapComponent::OnComponentConstruct(UMeshComponent* MeshComponent, const FL
 }
 
 // Set specified mesh to the Owner
-void UMapComponent::SetMesh(UStreamableRenderAsset* MeshAsset)
+void UMapComponent::SetMesh(UStreamableRenderAsset* MeshAsset, class UMeshComponent* InMeshComponent/* = nullptr*/)
 {
-	if (!MeshComponentInternal
-	    || !MeshAsset)
+	if (!MeshAsset
+		|| !MeshComponentInternal && !InMeshComponent)
 	{
 		return;
+	}
+
+	if (InMeshComponent)
+	{
+		MeshComponentInternal = InMeshComponent;
 	}
 
 	if (auto SkeletalMeshComponent = Cast<USkeletalMeshComponent>(MeshComponentInternal))
@@ -84,6 +85,29 @@ void UMapComponent::SetMesh(UStreamableRenderAsset* MeshAsset)
 	{
 		StaticMeshComponent->SetStaticMesh(Cast<UStaticMesh>(MeshAsset));
 	}
+}
+
+/** Set material to the mesh. */
+void UMapComponent::SetMaterial(UMaterialInterface* Material)
+{
+	if (MeshComponentInternal
+		&& Material)
+	{
+		MeshComponentInternal->SetMaterial(0, Material);
+	}
+}
+
+// Rerun owner's construction scripts. The temporary only editor owner will not be updated
+void UMapComponent::RerunOwnerConstruction() const
+{
+	if (!ensureMsgf(GetOwner(), TEXT("RerunOwnerConstruction: The map owner is not valid"))) return;
+	GetOwner()->RerunConstructionScripts();
+}
+
+// Get the owner's data asset
+EActorType UMapComponent::GetActorType() const
+{
+	return ActorDataAssetInternal ? ActorDataAssetInternal->GetActorType() : EAT::None;
 }
 
 //  Called when a component is registered (not loaded
@@ -101,18 +125,20 @@ void UMapComponent::OnRegister()
 	Owner->SetActorTickEnabled(false);
 
 	// Set the movable mobility for in-game attaching
-	if (Owner->GetRootComponent() != nullptr)
+	if (Owner->GetRootComponent())
 	{
 		Owner->GetRootComponent()->SetMobility(EComponentMobility::Movable);
 	}
 
 	// Finding the actor data asset
 	ActorDataAssetInternal = USingletonLibrary::GetDataAssetByActorClass(Owner->GetClass());
-	ensureMsgf(ActorDataAssetInternal, TEXT("ASSERT: 'the Actor Data Asset' was not found"));
+	if (!ensureMsgf(ActorDataAssetInternal, TEXT("ASSERT: 'The Actor Data Asset' was not found")))
+	{
+		return;
+	}
 
 	// Initialize the Box Collision Component
-	if (ActorDataAssetInternal
-	    && ensureMsgf(BoxCollision, TEXT("ASSERT: 'BoxCollisionInternal' is not valid")))
+	if (ensureMsgf(BoxCollision, TEXT("ASSERT: 'BoxCollisionInternal' is not valid")))
 	{
 		BoxCollision->AttachToComponent(Owner->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		BoxCollision->SetBoxExtent(ActorDataAssetInternal->GetCollisionExtent());
@@ -120,6 +146,18 @@ void UMapComponent::OnRegister()
 #if WITH_EDITOR
 		BoxCollision->SetHiddenInGame(!bShouldShowRenders);
 #endif
+	}
+
+	// Initialize mesh component
+	if (ActorDataAssetInternal->GetActorType() != EActorType::Player) // the character class already has own initialized skeletal component
+	{
+		MeshComponentInternal = NewObject<UMeshComponent>(GetOwner(), UStaticMeshComponent::StaticClass(), TEXT("MeshComponent"));
+		if (!ensureMsgf(MeshComponentInternal, TEXT("ASSERT: 'MeshComponentInternal' was not initialized")))
+		{
+			return;
+		}
+		MeshComponentInternal->AttachToComponent(Owner->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		MeshComponentInternal->RegisterComponent();
 	}
 
 #if WITH_EDITOR	 // [IsEditorNotPieWorld]

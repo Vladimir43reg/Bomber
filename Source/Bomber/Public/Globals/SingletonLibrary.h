@@ -45,31 +45,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "C++", meta = (DevelopmentOnly, DefaultToSelf = "Owner"))
 	static void ClearOwnerTextRenders(class AActor* Owner);
 
-	/** Debug visualization by text renders
-	 * @warning Has blueprint implementation */
+	/** Debug visualization by text renders. Has blueprint implementation. */
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, BlueprintPure = false, Category = "C++", meta = (DevelopmentOnly, AdvancedDisplay = 2, AutoCreateRefTerm = "TextColor,RenderText,CoordinatePosition", DefaultToSelf = "Owner"))
 	void AddDebugTextRenders(
 		class AActor* Owner,
-		const TSet<struct FCell>& Cells,
-		const struct FLinearColor& TextColor,
-		bool& bOutHasCoordinateRenders,
+		const TSet<FCell>& Cells,
+		const struct FLinearColor& TextColor, // used in the child native event
+		bool& bOutHasCoordinateRenders,       // used in the child native event
 		TArray<class UTextRenderComponent*>& OutTextRenderComponents,
-		float TextHeight = 261.0f,
-		float TextSize = 124.0f,
+		float TextHeight = 261.f,
+		float TextSize = 124.f,
 		const FString& RenderString = "",
 		const FVector& CoordinatePosition = FVector::ZeroVector) const;
-
-#if WITH_EDITOR	 // AddDebugTextRenders
-	/** Shortest static overloading of debugging visualization without outer params */
-	static void AddDebugTextRenders(
-		class AActor* Owner,
-		const TArray<FCell>& Cells,
-		const struct FLinearColor& TextColor = FLinearColor::Black,
-		float TextHeight = 261.0f,
-		float TextSize = 124.0f,
-		const FString& RenderString = "",
-		const FVector& CoordinatePosition = FVector::ZeroVector);
-#endif	//WITH_EDITOR AddDebugTextRenders
 
 	/* ---------------------------------------------------
 	 *		Static library functions
@@ -93,6 +80,10 @@ public:
 	/** Returns number of alive players. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
     static int32 GetAlivePlayersNum();
+
+	/** Returns the type of the current level. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
+    static ELevelType GetLevelType();
 
 	/** Return rhe Bomber Game Instance, nullptr otherwise */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++", meta = (WorldContext = "WorldContextObject"))

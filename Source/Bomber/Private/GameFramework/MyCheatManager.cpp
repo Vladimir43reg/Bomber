@@ -1,13 +1,13 @@
 // Copyright 2020 Yevhenii Selivanov
 
-#include "MyCheatManager.h"
+#include "GameFramework/MyCheatManager.h"
 //---
-#include "BoxActor.h"
 #include "GeneratedMap.h"
-#include "SingletonLibrary.h"
-#include "MapComponent.h"
-#include "MyAIController.h"
-#include "PlayerCharacter.h"
+#include "Components/MapComponent.h"
+#include "Globals/SingletonLibrary.h"
+#include "Controllers/MyAIController.h"
+#include "LevelActors/BoxActor.h"
+#include "LevelActors/PlayerCharacter.h"
 
 // Called when CheatManager is created to allow any needed initialization
 void UMyCheatManager::InitCheatManager()

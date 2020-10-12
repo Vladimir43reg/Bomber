@@ -1,19 +1,19 @@
 ﻿// Copyright 2020 Yevhenii Selivanov.
 
-#include "SingletonLibrary.h"
+#include "Globals/SingletonLibrary.h"
 //---
 #include "Bomber.h"
 #include "GeneratedMap.h"
-#include "LevelActorDataAsset.h"
-#include "MapComponent.h"
-#include "MyGameInstance.h"
-#include "MyGameModeBase.h"
+#include "Components/MapComponent.h"
+#include "Globals/MyGameInstance.h"
+#include "GameFramework/MyGameModeBase.h"
+#include "Controllers/MyPlayerController.h"
 #include "GameFramework/MyGameStateBase.h"
 #include "GameFramework/MyPlayerState.h"
-#include "Controllers/MyPlayerController.h"
+#include "Globals/LevelActorDataAsset.h"
 //---
-#include "Components/TextRenderComponent.h"
 #include "Engine.h"
+#include "Components/TextRenderComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Math/Color.h"
 //---
@@ -90,10 +90,10 @@ void USingletonLibrary::AddDebugTextRenders_Implementation(
 	const FLinearColor& TextColor,
 	bool& bOutHasCoordinateRenders,
 	TArray<UTextRenderComponent*>& OutTextRenderComponents,
-	float TextHeight,
-	float TextSize,
-	const FString& RenderString,
-	const FVector& CoordinatePosition) const
+	float TextHeight/* = 261.f*/,
+	float TextSize/* = 124.f*/,
+	const FString& RenderString/* = ""*/,
+	const FVector& CoordinatePosition/* = FVector::ZeroVector*/) const
 {
 #if WITH_EDITOR	 // [Editor]
 	if (!Cells.Num()			  // Null length
@@ -114,16 +114,6 @@ void USingletonLibrary::AddDebugTextRenders_Implementation(
 	PrintToLog(Owner, "AddDebugTextRenders \t added renders:", *(FString::FromInt(OutTextRenderComponents.Num()) + RenderString + FString(bOutHasCoordinateRenders ? "\t Double" : "")));
 #endif	// WITH_EDITOR [Editor]
 }
-
-// Shortest static overloading of debugging visualization without outer params
-#if WITH_EDITOR	 // [Editor] AddDebugTextRenders()
-void USingletonLibrary::AddDebugTextRenders(AActor* Owner, const TArray<FCell>& Cells, const FLinearColor& TextColor, float TextHeight, float TextSize, const FString& RenderString, const FVector& CoordinatePosition)
-{
-	bool bOutBool = false;
-	TArray<UTextRenderComponent*> OutArray;
-	GetSingleton()->AddDebugTextRenders(Owner, FCells{Cells}, TextColor, bOutBool, OutArray, TextHeight, TextSize, RenderString, CoordinatePosition);
-}
-#endif	// WITH_EDITOR [Editor]
 
 /* ---------------------------------------------------
  *		Static library functions
@@ -189,6 +179,17 @@ int32 USingletonLibrary::GetAlivePlayersNum()
 		PlayersNum = LevelMap->GetAlivePlayersNum();
 	}
 	return PlayersNum;
+}
+
+// Returns the type of the current level
+ELevelType USingletonLibrary::GetLevelType()
+{
+	ELevelType LevelType = ELT::None;
+	if (const AGeneratedMap* LevelMap = USingletonLibrary::GetLevelMap())
+	{
+		LevelType = LevelMap->GetLevelType();
+	}
+	return LevelType;
 }
 
 // Contains a data of standalone and PIE games, nullptr otherwise

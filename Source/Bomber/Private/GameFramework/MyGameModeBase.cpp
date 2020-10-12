@@ -1,11 +1,11 @@
 ﻿// Copyright 2020 Yevhenii Selivanov.
 
-#include "MyGameModeBase.h"
+#include "GameFramework/MyGameModeBase.h"
 //---
-#include "MyHUD.h"
-#include "MyPlayerController.h"
+#include "Controllers/MyPlayerController.h"
 #include "GameFramework/MyGameStateBase.h"
 #include "GameFramework/MyPlayerState.h"
+#include "UI/MyHUD.h"
 
 // Sets default values for this actor's properties
 AMyGameModeBase::AMyGameModeBase()

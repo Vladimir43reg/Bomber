@@ -1,9 +1,9 @@
 ﻿// Copyright 2020 Yevhenii Selivanov
 
-#include "MyCameraComponent.h"
+#include "Components/MyCameraComponent.h"
 //---
 #include "GeneratedMap.h"
-#include "SingletonLibrary.h"
+#include "Globals/SingletonLibrary.h"
 #include "GameFramework/MyGameStateBase.h"
 //---
 #include "Camera/CameraComponent.h"

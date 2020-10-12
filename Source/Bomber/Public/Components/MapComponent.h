@@ -4,7 +4,6 @@
 
 #include "Bomber.h"
 #include "Cell.h"
-#include "LevelActorDataAsset.h"
 #include "Components/ActorComponent.h"
 //---
 #include "MapComponent.generated.h"
@@ -49,17 +48,17 @@ public:
 	/** Sets default values for this component's properties */
 	UMapComponent();
 
-	/**
-	 *	Updates a owner's state. Should be called in the owner's OnConstruction event.
-	 *	@param MeshComponent Mesh component to set a mesh to an owner.
-	 *	@param ComparedMeshRowTypes Specify level and item types to find its mesh. Affects on a stylistic. Can be FLevelActorMeshRow::Empty
-	 */
-	UFUNCTION(BlueprintCallable, Category = "C++", meta = (AutoCreateRefTerm = "ComparedMeshRowTypes"))
-	void OnComponentConstruct(UMeshComponent* MeshComponent, const FLevelActorMeshRow& ComparedMeshRowTypes);
+	/** Updates a owner's state. Should be called in the owner's OnConstruction event. */
+	UFUNCTION(BlueprintCallable, Category = "C++")
+	void OnConstruction();
 
 	/** Set specified mesh to the Owner. */
 	UFUNCTION(BlueprintCallable, Category = "C++")
-	void SetMesh(class UStreamableRenderAsset* MeshAsset);
+	void SetMesh(class UStreamableRenderAsset* MeshAsset, class UMeshComponent* InMeshComponent = nullptr);
+
+	/** Set material to the mesh. */
+	UFUNCTION(BlueprintCallable, Category = "C++")
+	void SetMaterial(class UMaterialInterface* Material);
 
 	/** Returns the map component of the specified owner. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
@@ -70,23 +69,19 @@ public:
 
 	/**  Rerun owner's construction scripts. The temporary only editor owner will not be updated. */
 	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "C++")
-	void RerunOwnerConstruction() const
-	{
-		if (!ensureMsgf(GetOwner(), TEXT("RerunOwnerConstruction: The map owner is not valid"))) return;
-		GetOwner()->RerunConstructionScripts();
-	}
+	void RerunOwnerConstruction() const;
 
-	/** */
+	/** Get the owner's data asset. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
+    EActorType GetActorType() const;
+
+	/** Get the owner's data asset. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
 	FORCEINLINE class ULevelActorDataAsset* GetActorDataAsset() const { return ActorDataAssetInternal; }
 
-	/** Get checked Data Asset */
+	/** Get checked data asset. */
 	template <typename T>
 	FORCEINLINE const T* GetDataAssetChecked() const { return CastChecked<T>(ActorDataAssetInternal); }
-
-	/** */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
-	FORCEINLINE EActorType GetActorType() const { return ActorDataAssetInternal ? ActorDataAssetInternal->GetActorType() : EAT::None; }
 
 protected:
 	/* ---------------------------------------------------
@@ -98,7 +93,7 @@ protected:
 	class ULevelActorDataAsset* ActorDataAssetInternal; //[D]
 
 	/** */
-	UPROPERTY(BlueprintReadOnly, Category = "C++", meta = (BlueprintProtected, DisplayName = "Mesh Component"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "C++", meta = (BlueprintProtected, DisplayName = "Mesh Component"))
 	class UMeshComponent* MeshComponentInternal;//[C.DO]
 
 	/* ---------------------------------------------------
