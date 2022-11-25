@@ -4,7 +4,7 @@
 
 #include "Modules/ModuleInterface.h"
 
-class FMyEditorUtilsModule final : public IModuleInterface
+class MYEDITORUTILS_API FMyEditorUtilsModule final : public IModuleInterface
 {
 public:
 	/** Is used to to load and unload the Property Editor Module. */
@@ -29,12 +29,6 @@ public:
 	virtual void ShutdownModule() override;
 
 protected:
-	/** Creates all customizations for custom properties. */
-	void RegisterPropertyCustomizations();
-
-	/** Removes all custom property customizations. */
-	void UnregisterPropertyCustomizations();
-
 	/** Registers My User Widget Blueprint, so custom widget could be compiled. */
 	void RegisterMyUserWidgetBlueprint();
 
