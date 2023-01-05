@@ -5,7 +5,6 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "IDetailChildrenBuilder.h"
-#include "PropertyCustomizationHelpers.h"
 #include "SSearchableComboBox.h"
 
 // Called when the header of the property (the row in the details panel where the property is shown)
