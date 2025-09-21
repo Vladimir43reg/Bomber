@@ -3,7 +3,6 @@
 #include "UI/ViewModel/MVVM_MyCharacterBase.h"
 
 // Bomber
-#include "AdvancedSteamFriendsLibrary.h"
 #include "DataAssets/UIDataAsset.h"
 #include "GameFramework/MyPlayerState.h"
 #include "Subsystems/GlobalEventsSubsystem.h"
@@ -60,18 +59,7 @@ void UMVVM_MyCharacterBase::UpdateAvatar()
 		return;
 	}
 
-	if (UAdvancedSteamFriendsLibrary::IsOverlayEnabled())
-	{
-		// Try to obtain online avatar, if not found - human default will be used
-		EBlueprintAsyncResultSwitch Result = EBlueprintAsyncResultSwitch::OnFailure;
-		UTexture2D* OnlineAvatar = UAdvancedSteamFriendsLibrary::GetSteamFriendAvatar(MyPlayerState->GetUniqueId(), /*out*/ Result);
-		if (OnlineAvatar
-		    && Result == EBlueprintAsyncResultSwitch::OnSuccess)
-		{
-			// Online avatar is found
-			NewAvatar = OnlineAvatar;
-		}
-	}
+	// @TODO JanSeliv - Try to obtain online avatar, if not found - human default should be used
 
 	// Set human avatar
 	SetAvatar(NewAvatar);

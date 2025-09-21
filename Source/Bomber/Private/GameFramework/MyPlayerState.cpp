@@ -4,8 +4,6 @@
 
 // Bomber
 #include "AbilitySystem/Attributes/BmrPowerupsAttributeSet.h"
-#include "AdvancedIdentityLibrary.h"
-#include "AdvancedSteamFriendsLibrary.h"
 #include "Components/MapComponent.h"
 #include "Controllers/MyPlayerController.h"
 #include "DataAssets/PlayerDataAsset.h"
@@ -229,16 +227,8 @@ void AMyPlayerState::SetDefaultPlayerName()
 				NewName = UKismetSystemLibrary::GetPlatformUserName();
 			}
 
-			// Then, try to obtain player name from online subsystem
-			if (UAdvancedSteamFriendsLibrary::IsOverlayEnabled())
-			{
-				FString OnlinePlayerName = TEXT("");
-				UAdvancedIdentityLibrary::GetPlayerNickname(this, GetUniqueId(), /*out*/ OnlinePlayerName);
-				if (!OnlinePlayerName.IsEmpty())
-				{
-					NewName = OnlinePlayerName;
-				}
-			}
+			// @TODO JanSeliv - try to obtain player name from online subsystem
+
 			break;
 		}
 

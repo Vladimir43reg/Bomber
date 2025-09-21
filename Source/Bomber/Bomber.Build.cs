@@ -34,7 +34,6 @@ public class Bomber : ModuleRules
 			{
 				"CoreUObject", "Engine", "Slate", "SlateCore" // Core
 				, "NetCore" // Network: FFastArraySerializer, PushModel, Iris
-				, "OnlineSubsystem", "OnlineSubsystemUtils" // Online Sessions: create, destroy, join
 				, "InputCore" // FKey
 				, "AdvancedWidgets" // Widgets (URadialSlider etc)
 				, "RHI", "ApplicationCore" // Resolutions
@@ -45,7 +44,6 @@ public class Bomber : ModuleRules
                 , "ModelViewViewModel" // MVVM UI pattern
 				//My modules
 				, "SettingsWidgetConstructor" // Generates settings
-				, "AdvancedSessions", "AdvancedSteamSessions" // Steam
 			}
 		);
 
