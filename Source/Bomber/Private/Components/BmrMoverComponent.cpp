@@ -4,16 +4,17 @@
 
 // Bomber
 #include "AbilitySystem/Attributes/BmrPowerupsAttributeSet.h"
-#include "Bomber.h"
-#include "Components/MapComponent.h"
-#include "DataAssets/PlayerDataAsset.h"
-#include "GameFramework/MyGameStateBase.h"
-#include "GeneratedMap.h"
-#include "LevelActors/PlayerCharacter.h"
+#include "Actors/BmrGeneratedMap.h"
+#include "Actors/BmrPawn.h"
+#include "Components/BmrMapComponent.h"
+#include "DataAssets/BmrGeneratedMapDataAsset.h"
+#include "DataAssets/BmrPlayerDataAsset.h"
+#include "GameFramework/BmrGameState.h"
+#include "Structures/BmrGameStateTag.h"
 #include "Structures/BmrGameplayTags.h"
 #include "Structures/BmrMoverSyncState.h"
-#include "Subsystems/GlobalEventsSubsystem.h"
-#include "UtilityLibraries/CellsUtilsLibrary.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
+#include "UtilityLibraries/BmrCellUtilsLibrary.h"
 
 // UE
 #include "AbilitySystemGlobals.h"
@@ -27,7 +28,30 @@
 // Moves owner in given direction
 void UBmrMoverComponent::RequestMoveByIntent(const FVector& Direction)
 {
-	CurrentMoveInputInternal = Direction;
+	CurrentMoveInput = Direction;
+}
+
+// Instantly teleports owner to given location, useful for respawning or level transitions
+void UBmrMoverComponent::TeleportToLocation(const FVector& InLocation)
+{
+	const FVector HeightOffset = FVector::UpVector * UBmrGeneratedMapDataAsset::Get().GetActorsHeightOffset();
+	const FVector TargetLocation = InLocation + HeightOffset;
+
+	if (!BackendLiaisonComp)
+	{
+		// Might be null in editor preview or during initialization
+		GetOwner()->SetActorLocation(TargetLocation);
+		return;
+	}
+
+	// Block movement for teleport tick so previous input does not apply in next tick
+	SetBlockMovement(true);
+
+	const TSharedPtr<FTeleportEffect> TeleportEffect = MakeShared<FTeleportEffect>();
+	TeleportEffect->TargetLocation = TargetLocation;
+	TeleportEffect->bUseActorRotation = false;
+	TeleportEffect->TargetRotation = FRotator::ZeroRotator;
+	QueueInstantMovementEffect(TeleportEffect);
 }
 
 // When blocked, all movement inputs are ignored and the owner pawn will not move
@@ -42,7 +66,7 @@ void UBmrMoverComponent::SetBlockMovement(bool bShouldBlock)
 
 	if (bShouldBlock)
 	{
-		const TSubclassOf<UGameplayEffect> BlockMovementEffect = UPlayerDataAsset::Get().GetBlockMovementEffect();
+		const TSubclassOf<UGameplayEffect> BlockMovementEffect = UBmrPlayerDataAsset::Get().GetBlockMovementEffect();
 		ensureMsgf(BlockMovementEffect, TEXT("ASSERT: [%i] %hs:\n'BlockMovementEffect' is not valid!"), __LINE__, __FUNCTION__);
 		ASC->ApplyGameplayEffectToSelf(BlockMovementEffect.GetDefaultObject(), /*Level*/ 1.f, ASC->MakeEffectContext());
 
@@ -72,16 +96,28 @@ void UBmrMoverComponent::BeginPlay()
 
 	APawn* OwnerPlayer = CastChecked<APawn>(GetOwner());
 
-	BIND_ON_CHARACTER_READY_PTR(this, ThisClass::OnCharacterReady, Cast<APlayerCharacter>(OwnerPlayer));
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(BmrGameplayTags::Event::Player_PawnReady,
+	    this, [this, WeakTarget = TWeakObjectPtr(OwnerPlayer)](const FGameplayEventData& Payload)
+	{
+		if (Payload.Instigator == WeakTarget.Get())
+		{
+			OnPawnReady(Payload);
+		}
+	});
 
-	BIND_ON_GAME_STATE_CHANGED(this, ThisClass::OnGameStateChanged);
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(BmrGameplayTags::Event::GameState_Changed, this, &ThisClass::OnGameStateChanged);
 
-	UMapComponent* MapComponent = UMapComponent::GetMapComponent(OwnerPlayer);
+	UBmrMapComponent* MapComponent = UBmrMapComponent::GetMapComponent(OwnerPlayer);
 	checkf(MapComponent, TEXT("ERROR: [%i] %hs:\n'MapComponent' is null!"), __LINE__, __FUNCTION__);
-	MapComponent->OnAddedToLevel.AddUniqueDynamic(this, &ThisClass::OnOwnerAddedToLevel);
 	MapComponent->OnPreRemovedFromLevel.AddUniqueDynamic(this, &ThisClass::OnPreRemovedFromLevel);
 
 	OnPostMovement.AddUniqueDynamic(this, &ThisClass::OnPostMove);
+
+	OnTeleportSucceeded.AddUniqueDynamic(this, &ThisClass::OnTeleported);
+
+	FMover_ProcessGeneratedMovement ProcessGeneratedMoveDelegate;
+	ProcessGeneratedMoveDelegate.BindDynamic(this, &ThisClass::OnProcessGeneratedMove);
+	BindProcessGeneratedMovement(ProcessGeneratedMoveDelegate);
 
 	OwnerPlayer->ReceiveControllerChangedDelegate.AddUniqueDynamic(this, &ThisClass::OnControllerChanged);
 }
@@ -131,8 +167,8 @@ void UBmrMoverComponent::ProduceInput(const int32 DeltaTimeMS, FMoverInputCmdCon
 	}
 
 	// Setup movement input
-	const FRotator LevelGridRotation = UCellsUtilsLibrary::GetLevelGridRotation();
-	const FVector FinalDirectionalIntent = LevelGridRotation.RotateVector(CurrentMoveInputInternal);
+	const FRotator LevelGridRotation = UBmrCellUtilsLibrary::GetLevelGridRotation();
+	const FVector FinalDirectionalIntent = LevelGridRotation.RotateVector(CurrentMoveInput);
 	CharacterInputs.SetMoveInput(EMoveInputType::DirectionalIntent, FinalDirectionalIntent);
 }
 
@@ -141,47 +177,32 @@ void UBmrMoverComponent::ProduceInput(const int32 DeltaTimeMS, FMoverInputCmdCon
  ********************************************************************************************* */
 
 // Is called when this character is ready to be used
-void UBmrMoverComponent::OnCharacterReady_Implementation(APlayerCharacter* PlayerCharacter, int32 CharacterID)
+void UBmrMoverComponent::OnPawnReady_Implementation(const FGameplayEventData& Payload)
 {
-	checkf(PlayerCharacter == GetOwner(), TEXT("ERROR: [%i] %hs:\n'PlayerCharacter' is not the same as Owner!"), __LINE__, __FUNCTION__);
+	const ABmrPawn* Pawn = Cast<ABmrPawn>(Payload.Instigator.Get());
+	checkf(Pawn == GetOwner(), TEXT("ERROR: [%i] %hs:\n'Pawn' is not the same as Owner!"), __LINE__, __FUNCTION__);
 
 	// Setup powerups
-	UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(PlayerCharacter);
+	UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Pawn);
 	checkf(ASC, TEXT("ERROR: [%i] %hs:\n'ASC' is null, make sure Owner implements ability system interface!"), __LINE__, __FUNCTION__);
 	FOnGameplayAttributeValueChange& SkateAttributeDelegate = ASC->GetGameplayAttributeValueChangeDelegate(UBmrPowerupsAttributeSet::GetPowerup_SkateAttribute());
 	if (!SkateAttributeDelegate.IsBoundToObject(this))
 	{
 		// Entered in menu for first time, so bind to the Skate attribute change
 		SkateAttributeDelegate.AddUObject(this, &ThisClass::OnSkateAttributeChanged);
-		CachedSkatePowerupAttributeInternal = UBmrPowerupsAttributeSet::Get(ASC).GetPowerup_Skate();
+		CachedSkatePowerupAttribute = UBmrPowerupsAttributeSet::Get(ASC).GetPowerup_Skate();
 	}
 }
 
 // Listen to react when entered to different game state
-void UBmrMoverComponent::OnGameStateChanged(ECurrentGameState CurrentGameState)
+void UBmrMoverComponent::OnGameStateChanged_Implementation(const FGameplayEventData& Payload)
 {
-	const bool bShouldDisableMovement = CurrentGameState != ECurrentGameState::InGame;
+	const bool bShouldDisableMovement = !Payload.InstigatorTags.HasTag(FBmrGameStateTag::InGame);
 	SetBlockMovement(bShouldDisableMovement);
 }
 
-// Called when owner is added on the Generated Map, on both server and client
-void UBmrMoverComponent::OnOwnerAddedToLevel_Implementation(UMapComponent* MapComponent)
-{
-	checkf(MapComponent, TEXT("ERROR: [%i] %hs:\n'MapComponent' is null!"), __LINE__, __FUNCTION__);
-
-	// Owner is respawned, teleport it to initial restart location
-	const TSharedPtr<FTeleportEffect> TeleportEffect = MakeShared<FTeleportEffect>();
-	const UCapsuleComponent* CapsuleComponent = GetUpdatedComponent<UCapsuleComponent>();
-	const float CapsuleHalfHeight = CapsuleComponent ? CapsuleComponent->GetScaledCapsuleHalfHeight() : 0.f;
-	const FVector CapsuleOffset = FVector::UpVector * CapsuleHalfHeight;
-	TeleportEffect->TargetLocation = FVector(MapComponent->GetCell()) + CapsuleOffset;
-	TeleportEffect->bUseActorRotation = false;
-	TeleportEffect->TargetRotation = FRotator::ZeroRotator;
-	QueueInstantMovementEffect(TeleportEffect);
-}
-
 // Called when owner is unregistered from the Generated Map, on both server and client
-void UBmrMoverComponent::OnPreRemovedFromLevel_Implementation(UMapComponent* MapComponent, UObject* DestroyCauser)
+void UBmrMoverComponent::OnPreRemovedFromLevel_Implementation(UBmrMapComponent* MapComponent, UObject* DestroyCauser)
 {
 	SetBlockMovement(true);
 }
@@ -189,7 +210,7 @@ void UBmrMoverComponent::OnPreRemovedFromLevel_Implementation(UMapComponent* Map
 // Event called after a pawn's controller has changed, on the server and owning client
 void UBmrMoverComponent::OnControllerChanged_Implementation(APawn* Pawn, AController* OldController, AController* NewController)
 {
-	const bool bShouldDisableMovement = !NewController || AMyGameStateBase::GetCurrentGameState() != ECGS::InGame;
+	const bool bShouldDisableMovement = !NewController || !ABmrGameState::Get().HasMatchingGameplayTag(FBmrGameStateTag::InGame);
 	SetBlockMovement(bShouldDisableMovement);
 }
 
@@ -203,22 +224,43 @@ void UBmrMoverComponent::OnPostMove_Implementation(const FMoverTimeStep& TimeSte
 
 	// Add powerup state to SyncState
 	FBmrMoverSyncState& BmrSyncStateRef = SyncState.SyncStateCollection.FindOrAddMutableDataByType<FBmrMoverSyncState>();
-	BmrSyncStateRef.SkatePowerupAttribute = CachedSkatePowerupAttributeInternal;
+	BmrSyncStateRef.SkatePowerupAttribute = CachedSkatePowerupAttribute;
 
 	// Update player location on the Generated Map
 	const APawn* InOwnerPawn = GetOwner<APawn>();
-	UMapComponent* MapComponent = UMapComponent::GetMapComponent(InOwnerPawn);
+	UBmrMapComponent* MapComponent = UBmrMapComponent::GetMapComponent(InOwnerPawn);
 	checkf(MapComponent, TEXT("ERROR: [%i] %hs:\n'MapComponent' is null!"), __LINE__, __FUNCTION__);
 	if (InOwnerPawn->HasAuthority())
 	{
 		// On server, update a player location on the Generated Map
-		AGeneratedMap::Get().SetNearestCell(UMapComponent::GetMapComponent(InOwnerPawn));
+		ABmrGeneratedMap::Get().SetNearestCell(UBmrMapComponent::GetMapComponent(InOwnerPawn));
 	}
 	else if (InOwnerPawn->IsLocallyControlled())
 	{
 		// On local client, directly set a player location for responsiveness while server replicates it
-		const FCell SnappedCell = UCellsUtilsLibrary::SnapActorOnLevel(InOwnerPawn);
+		const FBmrCell SnappedCell = UBmrCellUtilsLibrary::SnapActorOnLevel(InOwnerPawn);
 		MapComponent->SetCell(SnappedCell);
+	}
+}
+
+// Called when queued teleport effect successfully applies, on every endpoint that ran simulation
+void UBmrMoverComponent::OnTeleported_Implementation(const FVector& FromLocation, const FQuat& FromRotation, const FVector& ToLocation, const FQuat& ToRotation)
+{
+	if (ABmrGameState::Get().HasMatchingGameplayTag(FBmrGameStateTag::InGame))
+	{
+		// Only release teleport-tick block once game state allows movement
+		SetBlockMovement(false);
+	}
+}
+
+// Called between movement mode's GenerateMove and SimulationTick on every endpoint, with chance to rewrite proposed move before it is consumed
+void UBmrMoverComponent::OnProcessGeneratedMove_Implementation(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove)
+{
+	if (IsBlockedMovement())
+	{
+		// Block is applied but velocity might be already accumulated, reset it
+		OutProposedMove.LinearVelocity = FVector::ZeroVector;
+		OutProposedMove.AngularVelocityDegrees = FVector::ZeroVector;
 	}
 }
 
@@ -239,8 +281,8 @@ void UBmrMoverComponent::OnMoveInputCompleted_Implementation(const FInputActionV
 	RequestMoveByIntent(FVector::ZeroVector);
 }
 
-// Is called when the Skate attribute is changed, e.g: when player picked up a Skate item
+// Is called when the Skate attribute is changed, e.g: when player picked up a Skate powerup
 void UBmrMoverComponent::OnSkateAttributeChanged(const FOnAttributeChangeData& OnAttributeChangeData)
 {
-	CachedSkatePowerupAttributeInternal = OnAttributeChangeData.NewValue;
+	CachedSkatePowerupAttribute = OnAttributeChangeData.NewValue;
 }

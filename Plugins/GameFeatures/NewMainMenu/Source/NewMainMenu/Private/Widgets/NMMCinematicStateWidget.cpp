@@ -1,35 +1,36 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "Widgets/NMMCinematicStateWidget.h"
 
 // NMM
 #include "Data/NMMDataAsset.h"
-#include "Data/NMMTypes.h"
-#include "Subsystems/NMMBaseSubsystem.h"
+#include "Data/NmmStateTag.h"
+#include "NmmGameplayTags.h"
 
 // Bomber
-#include "Controllers/MyPlayerController.h"
-#include "Subsystems/WidgetsSubsystem.h"
+#include "Controllers/BmrPlayerController.h"
+#include "Subsystems/BmrWidgetsSubsystem.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
 
 // UE
 #include "Components/Button.h"
 #include "Components/RadialSlider.h"
-#include "Components/TextBlock.h"
+#include "GameFramework/Pawn.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NMMCinematicStateWidget)
 
 // Applies the given time to hold the skip progress to skip the cinematic
 void UNMMCinematicStateWidget::SetCurrentHoldTime(float NewHoldTime)
 {
-	CurrentHoldTimeInternal = NewHoldTime;
+	CurrentHoldTime = NewHoldTime;
 
 	const float MaxHoldTime = UNMMDataAsset::Get().GetSkipCinematicHoldTime();
-	const float HoldProgressNormalized = FMath::Clamp(CurrentHoldTimeInternal / MaxHoldTime, 0.f, 1.f);
+	const float HoldProgressNormalized = FMath::Clamp(CurrentHoldTime / MaxHoldTime, 0.f, 1.f);
 
 	checkf(SkipHoldProgress, TEXT("ERROR: [%i] %hs:\n'SkipHoldProgress' is null!"), __LINE__, __FUNCTION__);
 	SkipHoldProgress->SetValue(HoldProgressNormalized);
 
-	if (CurrentHoldTimeInternal >= MaxHoldTime)
+	if (CurrentHoldTime >= MaxHoldTime)
 	{
 		OnCinematicSkipFinished();
 	}
@@ -49,7 +50,7 @@ void UNMMCinematicStateWidget::NativeConstruct()
 	// Hide this widget by default
 	SetVisibility(ESlateVisibility::Collapsed);
 
-	BIND_ON_MENU_STATE_CHANGED(this, ThisClass::OnNewMainMenuStateChanged);
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(NmmGameplayTags::Event::MenuStateChanged, this, &ThisClass::OnNewMainMenuStateChanged);
 
 	if (SkipCinematicButton)
 	{
@@ -58,16 +59,30 @@ void UNMMCinematicStateWidget::NativeConstruct()
 	}
 }
 
-// Called when the Main Menu state was changed
-void UNMMCinematicStateWidget::OnNewMainMenuStateChanged_Implementation(ENMMState NewState, ENMMState PreviousState)
+// Called when the widget is removed from the viewport
+void UNMMCinematicStateWidget::NativeDestruct()
 {
-	const bool bIsCinematic = NewState == ENMMState::Cinematic;
+	UGlobalMessageSubsystem::StopListeningForAllGlobalMessages(this);
 
-	if (bIsCinematic
-	    || PreviousState == ENMMState::Cinematic)
+	// Clear cached CinematicSkipped so late-binding listeners receive fresh data on next menu load
+	UGlobalMessageSubsystem::ClearCachedMessages(NmmGameplayTags::Event::CinematicSkipped, this);
+
+	Super::NativeDestruct();
+}
+
+// Called when the Main Menu state was changed
+void UNMMCinematicStateWidget::OnNewMainMenuStateChanged_Implementation(const FGameplayEventData& Payload)
+{
+	const FNmmStateTag NewState(Payload.InstigatorTags.First());
+	const bool bIsCinematic = NewState == FNmmStateTag::Cinematic;
+
+	// Was in cinematic if this widget is currently visible
+	const bool bWasCinematic = GetVisibility() != ESlateVisibility::Collapsed;
+
+	if (bIsCinematic || bWasCinematic)
 	{
 		// Hide all other widgets in Cinematic state and display them back when left
-		UWidgetsSubsystem::Get().SetAllWidgetsVisibility(!bIsCinematic);
+		UBmrWidgetsSubsystem::Get().SetAllWidgetsVisibility(!bIsCinematic);
 	}
 
 	// Show this widget in Cinematic state
@@ -85,7 +100,7 @@ void UNMMCinematicStateWidget::OnCinematicSkipOngoing_Implementation()
 {
 	const UWorld* World = GetWorld();
 	checkf(World, TEXT("ERROR: [%i] %hs:\n'World' is null!"), __LINE__, __FUNCTION__);
-	const float NewHoldTime = CurrentHoldTimeInternal + World->GetDeltaSeconds();
+	const float NewHoldTime = CurrentHoldTime + World->GetDeltaSeconds();
 
 	SetCurrentHoldTime(NewHoldTime);
 }
@@ -99,9 +114,19 @@ void UNMMCinematicStateWidget::OnCinematicSkipReleased_Implementation()
 // Is called to skip cinematic on finished holding the skip button or clicked on UI
 void UNMMCinematicStateWidget::OnCinematicSkipFinished_Implementation()
 {
-	// Skip cinematic
-	if (AMyPlayerController* MyPC = GetOwningPlayer<AMyPlayerController>())
+	ABmrPlayerController* MyPC = GetOwningPlayer<ABmrPlayerController>();
+	if (!MyPC)
 	{
-		MyPC->SetGameStartingState();
+		return;
+	}
+
+	// Notify that user skipped the pre-game cinematic manually
+	FGameplayEventData EventData;
+	EventData.EventTag = NmmGameplayTags::Event::CinematicSkipped;
+	EventData.Instigator = MyPC->GetPawn();
+	UGlobalMessageSubsystem::BroadcastGlobalMessage(EventData);
+	if (!MyPC->HasAuthority())
+	{
+		MyPC->ServerBroadcastMessage(EventData);
 	}
 }

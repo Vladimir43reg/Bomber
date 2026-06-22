@@ -2,11 +2,14 @@
 
 #include "AbilitySystem/Attributes/BmrHealthAttributeSet.h"
 
+// Bomber
+#include "Structures/BmrGameplayTags.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
+
 // UE
 #include "AbilitySystemGlobals.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
-#include "Structures/BmrGameplayTags.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrHealthAttributeSet)
 
@@ -112,9 +115,9 @@ void UBmrHealthAttributeSet::PostAttributeChange(const FGameplayAttribute& Attri
 		}
 	}
 
-	if (bOutOfHealthInternal && GetHealth() > 0.f)
+	if (bOutOfHealth && GetHealth() > 0.f)
 	{
-		bOutOfHealthInternal = false;
+		bOutOfHealth = false;
 	}
 }
 
@@ -156,13 +159,15 @@ void UBmrHealthAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModC
 		SetHealth(FMath::Clamp(GetHealth(), MinimumHealth, GetMaxHealth()));
 	}
 
-	if (GetHealth() <= 0.f && !bOutOfHealthInternal)
+	if (GetHealth() <= 0.f && !bOutOfHealth)
 	{
 		FGameplayEventData EventData;
+		EventData.EventTag = BmrGameplayTags::Event::Player_Death;
 		EventData.Instigator = Data.EffectSpec.GetEffectContext().GetInstigator();
-		Data.Target.HandleGameplayEvent(BmrGameplayTags::Event::Player_Death, &EventData);
+		EventData.Target = Data.Target.GetAvatarActor();
+		UGlobalMessageSubsystem::BroadcastGlobalMessage(EventData);
 	}
 
 	// Check health again in case an event above changed it.
-	bOutOfHealthInternal = GetHealth() <= 0.f;
+	bOutOfHealth = GetHealth() <= 0.f;
 }

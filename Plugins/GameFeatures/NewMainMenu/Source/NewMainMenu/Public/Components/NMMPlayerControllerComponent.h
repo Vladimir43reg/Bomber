@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #pragma once
 
@@ -6,10 +6,7 @@
 
 #include "NMMPlayerControllerComponent.generated.h"
 
-class AMyPlayerController;
-
-enum class ENMMState : uint8;
-enum class ECurrentGameState : uint8;
+class ABmrPlayerController;
 
 /**
  * Represents the Player Controller in the NewMain Menu module, where the Owner is Player Controller actor.
@@ -25,57 +22,41 @@ public:
 	UNMMPlayerControllerComponent();
 
 	/** Returns Player Controller of this component. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	AMyPlayerController* GetPlayerController() const;
-	AMyPlayerController& GetPlayerControllerChecked() const;
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	ABmrPlayerController* GetPlayerController() const;
+	ABmrPlayerController& GetPlayerControllerChecked() const;
 
 	/*********************************************************************************************
 	 * Main methods
 	 ********************************************************************************************* */
 public:
 	/** Returns loaded and cached Save Game Data of the Main Menu. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	FORCEINLINE class UNMMSaveGameData* GetSaveGameData() const { return SaveGameDataInternal; }
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	FORCEINLINE class UNMMSaveGameData* GetSaveGameData() const { return SaveGameData; }
 
 	/** Assigns existing Save Game Data to this component. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	void SetSaveGameData(class USaveGame* NewSaveGameData);
 
 	/** Enables or disables the input context during Cinematic Main Menu State. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	void SetCinematicInputContextEnabled(bool bEnable);
 
 	/** Enables or disables Cinematic mouse settings from Player Input data asset. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	void SetCinematicMouseVisibilityEnabled(bool bEnabled);
 
 	/** Enables or disables the input context according to new menu state. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
-	void SetManagedInputContextsEnabled(ENMMState NewState);
-
-	/** Tries to set the Menu game state on initializing the Main Menu system. */
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "C++")
-	void TrySetMenuState();
-
-	/*********************************************************************************************
-	 * Sounds
-	 ********************************************************************************************* */
-public:
-	/** Trigger the background music to be played in the Main Menu. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
-	void PlayMainMenuMusic();
-
-	/** Stops currently played Main Menu background music. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
-	void StopMainMenuMusic();
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
+	void SetManagedInputContextsEnabled(struct FNmmStateTag NewMenuState);
 
 	/*********************************************************************************************
 	 * Protected properties
 	 ********************************************************************************************* */
 protected:
 	/** Contains loaded and cached Save Game Data of the Main Menu. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "C++", meta = (BlueprintProtected, DisplayName = "Save Game Data"))
-	TObjectPtr<class UNMMSaveGameData> SaveGameDataInternal = nullptr;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	TObjectPtr<class UNMMSaveGameData> SaveGameData = nullptr;
 
 	/*********************************************************************************************
 	 * Overrides
@@ -91,19 +72,19 @@ protected:
 	 * Events
 	 ********************************************************************************************* */
 protected:
-	/** Listen to react when entered the Menu state. */
-	UFUNCTION(BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnGameStateChanged(ECurrentGameState CurrentGameState);
+	/** Called when the NMM data asset is loaded and available. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void OnDataAssetLoaded(const class UNMMDataAsset* DataAsset);
 
-	/** Called wen the Main Menu state was changed. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnNewMainMenuStateChanged(ENMMState NewState, ENMMState PreviousState);
+	/** Called when the Main Menu state was changed. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void OnNewMainMenuStateChanged(const struct FGameplayEventData& Payload);
 
-	/** Is listen to set Menu game state once first spot is ready. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnActiveMenuSpotReady(class UNMMSpotComponent* MainMenuSpotComponent);
+	/** Is called when all game widgets are initialized. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void OnWidgetsInitialized();
 
 	/** Is called from AsyncLoadGameFromSlot once Save Game is loaded, or null if it failed to load. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
 	void OnAsyncLoadGameFromSlotCompleted(class USaveGame* SaveGame);
 };

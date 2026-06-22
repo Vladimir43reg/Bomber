@@ -1,17 +1,22 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "Subsystems/NMMSpotsSubsystem.h"
 
 // NMM
 #include "Components/NMMSpotComponent.h"
+#include "DalRegistrySubsystem.h"
 #include "NMMUtils.h"
+#include "NmmGameplayTags.h"
 #include "Subsystems/NMMBaseSubsystem.h"
+#include "Subsystems/NMMCameraSubsystem.h"
 #include "Subsystems/NMMInGameSettingsSubsystem.h"
 
 // Bomber
-#include "GameFramework/MyGameStateBase.h"
-#include "Subsystems/GlobalEventsSubsystem.h"
-#include "UtilityLibraries/MyBlueprintFunctionLibrary.h"
+#include "DataRegistries/BmrCinematicRow.h"
+#include "GameFramework/BmrGameState.h"
+#include "Structures/BmrGameStateTag.h"
+#include "Structures/BmrGameplayTags.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NMMSpotsSubsystem)
 
@@ -32,10 +37,131 @@ bool UNMMSpotsSubsystem::IsActiveMenuSpotReady() const
 // Add new Main-Menu spot, so it can be obtained by other objects
 void UNMMSpotsSubsystem::AddNewMainMenuSpot(UNMMSpotComponent* NewMainMenuSpotComponent)
 {
-	if (ensureMsgf(NewMainMenuSpotComponent, TEXT("%s: 'NewMainMenuSpotComponent' is null"), *FString(__FUNCTION__)))
+	if (!ensureMsgf(NewMainMenuSpotComponent, TEXT("%s: 'NewMainMenuSpotComponent' is null"), *FString(__FUNCTION__)))
 	{
-		MainMenuSpotsInternal.AddUnique(NewMainMenuSpotComponent);
+		return;
 	}
+
+	MainMenuSpots.AddUnique(NewMainMenuSpotComponent);
+
+	// Init the late spot immediately, otherwise wait until cinematics load completes
+	if (NewMainMenuSpotComponent->GetCinematicRow().IsValid())
+	{
+		NewMainMenuSpotComponent->InitMasterSequencePlayer();
+	}
+}
+
+// Reinitializes cinematic data for all spots from Data Registry
+void UNMMSpotsSubsystem::ReinitializeAllSpots()
+{
+	for (UNMMSpotComponent* SpotComponent : MainMenuSpots)
+	{
+		if (SpotComponent)
+		{
+			SpotComponent->ReinitializeCinematicData();
+		}
+	}
+
+	UDalRegistrySubsystem::Get().TryLoad(this);
+}
+
+// Activates local player's spot once all spots finished loading, nothing otherwise
+void UNMMSpotsSubsystem::TryActivateMenuSpot()
+{
+	// Once menu owns selection, resolve its spot as soon as it loads so one stuck sibling never blocks re-activation, only first resolution waits for all spots to pick highest
+	const bool bHasMenuSelection = ActiveSpotPriority != INDEX_NONE;
+	if (!bHasMenuSelection && !AreAllSpotsLoaded())
+	{
+		// Spots still loading, wait for last one
+		return;
+	}
+
+	UNMMSpotComponent* ActiveSpot = FindLocalPlayerSpot();
+	if (!ActiveSpot)
+	{
+		// Local player's spot not loaded yet, defer until it does
+		return;
+	}
+
+	ActiveSpotPriority = ActiveSpot->GetCinematicRow().Priority;
+	// Reset player to resolved spot's character, so match's in-game per-player character never lingers in menu when re-activated without state change
+	ActiveSpot->ApplyMeshOnPlayer();
+
+	// Apply cinematic state that was deferred during async load
+	const FNmmStateTag CurrentState = UNMMBaseSubsystem::Get().GetCurrentMenuState();
+	ActiveSpot->SetCinematicByState(CurrentState);
+
+	NotifyActiveMenuSpotReady(ActiveSpot);
+}
+
+// Returns true once every cinematic spot has registered and finished loading its Master Sequence
+bool UNMMSpotsSubsystem::AreAllSpotsLoaded() const
+{
+	int32 LoadedSpots = 0;
+	for (const UNMMSpotComponent* SpotIt : MainMenuSpots)
+	{
+		if (!SpotIt
+		    || SpotIt->GetCinematicRow().IsEmpty())
+		{
+			// Spot carries no cinematic data, it is not part of menu
+			continue;
+		}
+
+		if (!SpotIt->GetMasterPlayer())
+		{
+			// Spot has cinematic data but hasn't finished loading its sequence yet
+			return false;
+		}
+
+		++LoadedSpots;
+	}
+
+	// Each cinematic row maps to one menu spot, so this is determenistic way to verify all of their cinematics are loaded
+	const int32 ExpectedSpots = FBmrCinematicRow::GetRowsNum();
+	return LoadedSpots > 0
+	       && LoadedSpots >= ExpectedSpots;
+}
+
+// Returns deterministic highest-priority spot on first resolution, then spot matching active spot priority once it is set, null while that spot is still loading
+UNMMSpotComponent* UNMMSpotsSubsystem::FindLocalPlayerSpot() const
+{
+	const bool bHasMenuSelection = ActiveSpotPriority != INDEX_NONE;
+	UNMMSpotComponent* HighestPrioritySpot = nullptr;
+	for (UNMMSpotComponent* SpotIt : MainMenuSpots)
+	{
+		if (!SpotIt || !SpotIt->GetMasterPlayer())
+		{
+			// Skip spots that have not finished loading their Master Sequence
+			continue;
+		}
+
+		if (bHasMenuSelection
+		    && SpotIt->GetCinematicRow().Priority == ActiveSpotPriority)
+		{
+			// Spot matching active spot priority loaded: resolve to it, not to chosen mesh data, which a match overwrites with the in-game per-player character
+			return SpotIt;
+		}
+
+		const bool bIsHigherPriority = !HighestPrioritySpot || SpotIt->GetCinematicRow().Priority > HighestPrioritySpot->GetCinematicRow().Priority;
+		if (bIsHigherPriority)
+		{
+			HighestPrioritySpot = SpotIt;
+		}
+	}
+
+	if (bHasMenuSelection)
+	{
+		// Selection exists but its spot is still loading: defer so non-selected spot never activates and clobbers selection
+		return nullptr;
+	}
+
+	return HighestPrioritySpot;
+}
+
+// Notifies listeners that active menu spot is ready
+void UNMMSpotsSubsystem::NotifyActiveMenuSpotReady(UNMMSpotComponent* Spot)
+{
+	OnActiveMenuSpotReady.Broadcast(Spot);
 }
 
 // Removes Main-Menu spot if should not be available by other objects anymore
@@ -43,16 +169,21 @@ void UNMMSpotsSubsystem::RemoveMainMenuSpot(UNMMSpotComponent* MainMenuSpotCompo
 {
 	if (ensureMsgf(MainMenuSpotComponent, TEXT("%s: 'MainMenuSpotComponent' is null"), *FString(__FUNCTION__)))
 	{
-		MainMenuSpotsInternal.RemoveSwap(MainMenuSpotComponent);
+		MainMenuSpots.RemoveSwap(MainMenuSpotComponent);
 	}
 }
 
 // Returns currently selected Main-Menu spot
 UNMMSpotComponent* UNMMSpotsSubsystem::GetCurrentSpot() const
 {
-	for (UNMMSpotComponent* MainMenuSpotComponent : MainMenuSpotsInternal)
+	if (ActiveSpotPriority == INDEX_NONE)
 	{
-		if (MainMenuSpotComponent && MainMenuSpotComponent->GetCinematicRow().RowIndex == ActiveMenuSpotIdxInternal)
+		return nullptr;
+	}
+
+	for (UNMMSpotComponent* MainMenuSpotComponent : MainMenuSpots)
+	{
+		if (MainMenuSpotComponent && MainMenuSpotComponent->GetCinematicRow().Priority == ActiveSpotPriority)
 		{
 			return MainMenuSpotComponent;
 		}
@@ -61,40 +192,40 @@ UNMMSpotComponent* UNMMSpotsSubsystem::GetCurrentSpot() const
 	return nullptr;
 }
 
-// Returns Main-Menu spots by given level type
-void UNMMSpotsSubsystem::GetMainMenuSpotsByLevelType(TArray<UNMMSpotComponent*>& OutSpots, ELevelType LevelType) const
+// Returns all valid Main-Menu spots sorted by priority
+void UNMMSpotsSubsystem::GetMainMenuSpots(TArray<UNMMSpotComponent*>& OutSpots) const
 {
-	for (UNMMSpotComponent* MainMenuSpotComponent : MainMenuSpotsInternal)
+	for (UNMMSpotComponent* MainMenuSpotComponent : MainMenuSpots)
 	{
 		if (MainMenuSpotComponent
-		    && MainMenuSpotComponent->GetCinematicRow().LevelType == LevelType)
+		    && MainMenuSpotComponent->GetCinematicRow().IsValid())
 		{
 			OutSpots.AddUnique(MainMenuSpotComponent);
 		}
 	}
 
-	// Sort the array based on the RowIndex
+	// Sort the array based on the Priority, higher priority first
 	OutSpots.Sort([](const UNMMSpotComponent& A, const UNMMSpotComponent& B)
 	{
-		return A.GetCinematicRow().RowIndex < B.GetCinematicRow().RowIndex;
+		return A.GetCinematicRow().Priority > B.GetCinematicRow().Priority;
 	});
 }
 
 // Returns next or previous Main-Menu spot by given incrementer
-UNMMSpotComponent* UNMMSpotsSubsystem::GetNextSpot(int32 Incrementer, ELevelType LevelType) const
+UNMMSpotComponent* UNMMSpotsSubsystem::GetNextSpot(int32 Incrementer) const
 {
 	TArray<UNMMSpotComponent*> CurrentLevelTypeSpots;
-	GetMainMenuSpotsByLevelType(/*out*/ CurrentLevelTypeSpots, LevelType);
+	GetMainMenuSpots(/*out*/ CurrentLevelTypeSpots);
 
-	// Extract the row indices, so we can track the bounds
-	TArray<int32> SpotRowIndices;
+	// Extract the priorities, so we can track the bounds
+	TArray<int32> SpotPriorities;
 	for (const UNMMSpotComponent* SpotIt : CurrentLevelTypeSpots)
 	{
-		SpotRowIndices.AddUnique(SpotIt->GetCinematicRow().RowIndex);
+		SpotPriorities.AddUnique(SpotIt->GetCinematicRow().Priority);
 	}
 
-	const bool bFoundActiveIdx = SpotRowIndices.Contains(ActiveMenuSpotIdxInternal);
-	if (!ensureMsgf(bFoundActiveIdx, TEXT("%s: 'ActiveMenuSpotIdxInternal' is not found in the 'SpotRowIndices'"), *FString(__FUNCTION__)))
+	const bool bFoundActivePriority = SpotPriorities.Contains(ActiveSpotPriority);
+	if (!ensureMsgf(bFoundActivePriority, TEXT("%s: 'ActiveSpotPriority' is not found in the 'SpotPriorities'"), *FString(__FUNCTION__)))
 	{
 		// Most likely the level is switched that could be not supported yet
 		return nullptr;
@@ -102,32 +233,32 @@ UNMMSpotComponent* UNMMSpotsSubsystem::GetNextSpot(int32 Incrementer, ELevelType
 
 	// Find the new index based on the incrementer
 	// If there is no next spot in array, it will take the first one with its index and vise versa for decrementing
-	const int32 ActiveSpotPosition = SpotRowIndices.IndexOfByKey(ActiveMenuSpotIdxInternal);
-	const int32 NewSpotIndex = (ActiveSpotPosition + Incrementer + SpotRowIndices.Num()) % SpotRowIndices.Num();
-	checkf(CurrentLevelTypeSpots.IsValidIndex(NewSpotIndex), TEXT("ERROR: [%i] %s:\n'CurrentLevelTypeSpots array has to have NewSpotIndex since it's the same size as SpotRowIndices array!"), __LINE__, *FString(__FUNCTION__));
+	const int32 ActiveSpotPosition = SpotPriorities.IndexOfByKey(ActiveSpotPriority);
+	const int32 NewSpotIndex = (ActiveSpotPosition + Incrementer + SpotPriorities.Num()) % SpotPriorities.Num();
+	checkf(CurrentLevelTypeSpots.IsValidIndex(NewSpotIndex), TEXT("ERROR: [%i] %s:\n'CurrentLevelTypeSpots array has to have NewSpotIndex since it's the same size as SpotPriorities array!"), __LINE__, *FString(__FUNCTION__));
 	return CurrentLevelTypeSpots[NewSpotIndex];
 }
 
 // Goes to another Spot to show another player character on current level
 UNMMSpotComponent* UNMMSpotsSubsystem::MoveMainMenuSpot(int32 Incrementer)
 {
-	UNMMSpotComponent* NextMainMenuSpot = GetNextSpot(Incrementer, UMyBlueprintFunctionLibrary::GetLevelType());
+	UNMMSpotComponent* NextMainMenuSpot = GetNextSpot(Incrementer);
 	if (!ensureMsgf(NextMainMenuSpot, TEXT("ASSERT: [%i] %s:\n'NextMainMenuSpot' is not valid!"), __LINE__, *FString(__FUNCTION__)))
 	{
 		return nullptr;
 	}
 
-	// Set the new active spot index
-	ActiveMenuSpotIdxInternal = NextMainMenuSpot->GetCinematicRow().RowIndex;
-	LastMoveSpotDirectionInternal = Incrementer;
+	// Set the new active spot priority
+	ActiveSpotPriority = NextMainMenuSpot->GetCinematicRow().Priority;
+	LastMoveSpotDirection = Incrementer;
 
 	// If transition happened in opened menu, change the internal state
-	if (AMyGameStateBase::GetCurrentGameState() == ECGS::Menu)
+	if (ABmrGameState::Get().HasMatchingGameplayTag(FBmrGameStateTag::Menu))
 	{
 		// If instant, then switch to the next spot, it will possess the camera and start playing its cinematic
 		// Otherwise start transition to the next spot
 		const bool bInstant = UNMMInGameSettingsSubsystem::Get().IsInstantCharacterSwitchEnabled();
-		UNMMBaseSubsystem::Get().SetNewMainMenuState(bInstant ? ENMMState::Idle : ENMMState::Transition);
+		UNMMBaseSubsystem::Get().SetNewMainMenuState(bInstant ? FNmmStateTag::Idle : FNmmStateTag::Transition);
 	}
 	else // In-game
 	{
@@ -143,23 +274,22 @@ UNMMSpotComponent* UNMMSpotsSubsystem::MoveMainMenuSpotByPredicate(int32 Increme
 {
 	const int32 FinalIncrementer = [&]() -> int32
 	{
-		const ELevelType LevelType = UMyBlueprintFunctionLibrary::GetLevelType();
-		TArray<UNMMSpotComponent*> LevelTypeSpots;
-		GetMainMenuSpotsByLevelType(LevelTypeSpots, LevelType);
+		TArray<UNMMSpotComponent*> AllSpots;
+		GetMainMenuSpots(AllSpots);
 
-		if (LevelTypeSpots.IsEmpty())
+		if (AllSpots.IsEmpty())
 		{
 			return 0;
 		}
 
 		UNMMSpotComponent* Spot = nullptr;
 		int32 Attempts = 0;
-		const int32 MaxAttempts = LevelTypeSpots.Num();
+		const int32 MaxAttempts = AllSpots.Num();
 		int32 NewIncrementer = Incrementer;
 
 		while (Attempts < MaxAttempts)
 		{
-			Spot = GetNextSpot(NewIncrementer, LevelType);
+			Spot = GetNextSpot(NewIncrementer);
 			if (Spot && Predicate(Spot))
 			{
 				return NewIncrementer;
@@ -185,11 +315,23 @@ UNMMSpotComponent* UNMMSpotsSubsystem::MoveMainMenuSpotByPredicate(int32 Increme
 // Attempts to switch to the active menu spot if current slot is not available for any reason
 void UNMMSpotsSubsystem::HandleUnavailableMenuSpot()
 {
-	const UNMMSpotComponent* CurrentSpot = GetCurrentSpot();
-	if (CurrentSpot && CurrentSpot->IsSpotAvailable())
+	if (UNMMSpotComponent* CurrentSpot = GetCurrentSpot())
 	{
-		// No need to switch, the current spot is valid
-		return;
+		const UNMMCameraSubsystem* CameraSubsystem = UNMMUtils::GetCameraSubsystem();
+		const ENMMCameraRailTransitionState RailState = CameraSubsystem ? CameraSubsystem->GetCurrentCameraRailTransitionState() : ENMMCameraRailTransitionState::None;
+		if (RailState == ENMMCameraRailTransitionState::BeginTransition
+		    || RailState == ENMMCameraRailTransitionState::HalfwayTransition)
+		{
+			// Match started while transition is happening between spots, apply mesh early as interruption scenario
+			CurrentSpot->ApplyMeshOnPlayer();
+		}
+
+		if (CurrentSpot->IsSpotAvailable())
+		{
+			// Current spot available, keep it
+			return;
+		}
+		// Fallthrough to move to last available spot
 	}
 
 	// Current is inactive (hidden), likely it's locked by different systems
@@ -205,21 +347,29 @@ void UNMMSpotsSubsystem::HandleUnavailableMenuSpot()
  * Overrides
  ********************************************************************************************* */
 
-void UNMMSpotsSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+// Subscribes to menu state and game state events
+void UNMMSpotsSubsystem::OnGameFeatureInitialize_Implementation()
 {
-	Super::OnWorldBeginPlay(InWorld);
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(NmmGameplayTags::Event::MenuStateChanged, this, &ThisClass::OnNewMainMenuStateChanged);
 
-	BIND_ON_MENU_STATE_CHANGED(this, ThisClass::OnNewMainMenuStateChanged);
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(BmrGameplayTags::Event::GameState_Changed, this, &ThisClass::OnGameStateChanged);
 
-	BIND_ON_GAME_STATE_CHANGED(this, ThisClass::OnGameStateChanged);
+	UDalRegistrySubsystem::Get().BindAndLoad<FBmrCinematicRow>(this, &ThisClass::OnCinematicRowsChanged);
 }
 
 // Clears all transient data contained in this subsystem
-void UNMMSpotsSubsystem::Deinitialize()
+void UNMMSpotsSubsystem::OnGameFeatureDeinitialize_Implementation()
 {
-	MainMenuSpotsInternal.Empty();
+	UGlobalMessageSubsystem::StopListeningForAllGlobalMessages(this);
 
-	Super::Deinitialize();
+	if (UDalRegistrySubsystem* DalRegistry = UDalRegistrySubsystem::GetDalRegistrySubsystem())
+	{
+		DalRegistry->UnbindFromDataRegistryLoad(this);
+	}
+
+	MainMenuSpots.Empty();
+	ActiveSpotPriority = INDEX_NONE;
+	LastMoveSpotDirection = 0;
 }
 
 /*********************************************************************************************
@@ -227,23 +377,72 @@ void UNMMSpotsSubsystem::Deinitialize()
  ********************************************************************************************* */
 
 // Called when the Main Menu state was changed
-void UNMMSpotsSubsystem::OnNewMainMenuStateChanged_Implementation(ENMMState NewState, ENMMState PreviousState)
+void UNMMSpotsSubsystem::OnNewMainMenuStateChanged_Implementation(const FGameplayEventData& Payload)
 {
-	if (NewState == ENMMState::None)
+	const FNmmStateTag NewState(Payload.InstigatorTags.First());
+	if (NewState == FNmmStateTag::None
+	    || NewState == FNmmStateTag::BasicMenu)
 	{
-		LastMoveSpotDirectionInternal = 0;
+		LastMoveSpotDirection = 0;
+	}
+	else if ((FNmmStateTag::Idle | FNmmStateTag::Cinematic).HasTag(NewState))
+	{
+		UNMMSpotComponent* ActiveSpot = GetCurrentSpot();
+		if (ActiveSpot && ActiveSpot->GetMasterPlayer())
+		{
+			ActiveSpot->SetCinematicByState(NewState);
+			NotifyActiveMenuSpotReady(ActiveSpot);
+		}
 	}
 }
 
 // Called when the current game state was changed
-void UNMMSpotsSubsystem::OnGameStateChanged_Implementation(ECurrentGameState CurrentGameState)
+void UNMMSpotsSubsystem::OnGameStateChanged_Implementation(const FGameplayEventData& Payload)
 {
-	switch (CurrentGameState)
+	if (Payload.InstigatorTags.HasTag(FBmrGameStateTag::GameStarting))
 	{
-		case ECGS::GameStarting:
-			HandleUnavailableMenuSpot();
-			break;
+		HandleUnavailableMenuSpot();
+	}
+}
 
-		default: break;
+// Called when cinematic Data Registry rows change and all their soft references finish async loading
+void UNMMSpotsSubsystem::OnCinematicRowsChanged_Implementation()
+{
+	bool bAnySpotHasValidRow = false;
+	for (UNMMSpotComponent* SpotIt : MainMenuSpots)
+	{
+		if (SpotIt)
+		{
+			SpotIt->ReinitializeCinematicData();
+			bAnySpotHasValidRow |= SpotIt->GetCinematicRow().IsValid();
+		}
+	}
+
+	const bool bHasRows = FBmrCinematicRow::HasRows();
+
+	UNMMBaseSubsystem& BaseSubsystem = UNMMBaseSubsystem::Get();
+	const FNmmStateTag CurrentState = BaseSubsystem.GetCurrentMenuState();
+
+	if (bHasRows
+	    && bAnySpotHasValidRow
+	    && CurrentState == FNmmStateTag::BasicMenu)
+	{
+		// Cinematics rows injected by map GFP and spots are ready, activate cinematic lobby
+		BaseSubsystem.SetNewMainMenuState(FNmmStateTag::Idle);
+	}
+	else if (!bHasRows
+	         && CurrentState != FNmmStateTag::None
+	         && CurrentState != FNmmStateTag::BasicMenu)
+	{
+		// DR emptied at runtime (map GFP unloaded), fall back to basic menu
+		BaseSubsystem.SetNewMainMenuState(FNmmStateTag::BasicMenu);
+	}
+
+	for (UNMMSpotComponent* SpotIt : MainMenuSpots)
+	{
+		if (SpotIt)
+		{
+			SpotIt->InitMasterSequencePlayer();
+		}
 	}
 }

@@ -21,13 +21,18 @@ void UNMMSaveGameData::SaveDataAsync()
 }
 
 // Adds given cinematic to the list of cinematics have seen by the player
-void UNMMSaveGameData::MarkCinematicAsSeen(int32 CinematicRowIndex)
+void UNMMSaveGameData::MarkCinematicAsSeen(int32 CinematicPriority)
 {
-	const int32 Bitmask = 1 << CinematicRowIndex;
-	const bool bIsNewCinematic = !(AllSeenCinematicsBitmaskInternal & Bitmask);
+	if (CinematicPriority == INDEX_NONE)
+	{
+		return;
+	}
+
+	const int32 Bitmask = 1 << CinematicPriority;
+	const bool bIsNewCinematic = !(AllSeenCinematicsBitmask & Bitmask);
 	if (bIsNewCinematic)
 	{
-		AllSeenCinematicsBitmaskInternal |= Bitmask;
+		AllSeenCinematicsBitmask |= Bitmask;
 		SaveDataAsync();
 	}
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov.
+// Copyright (c) Yevhenii Selivanov.
 
 using UnrealBuildTool;
 
@@ -7,7 +7,6 @@ public class MyEditorUtils : ModuleRules
 	public MyEditorUtils(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		CppStandard = CppStandardVersion.Latest;
 		CppCompileWarningSettings.NonInlinedGenCppWarningLevel = WarningLevel.Error;
 
 		PublicDependencyModuleNames.AddRange(
@@ -15,6 +14,7 @@ public class MyEditorUtils : ModuleRules
 			{
 				"Core"
 				, "AssetTools" // Created FAssetTypeActions_MyDataTable
+				, "EditorSubsystem" // Created UMyWorldPartitionEditorSubsystem
 				, "UnrealEd" // Created UMyDataTableFactory
 				, "UMGEditor" // Created UMyUserWidgetFactory
 			}
@@ -24,7 +24,6 @@ public class MyEditorUtils : ModuleRules
 			new[]
 			{
 				"CoreUObject", "Engine", "Slate", "SlateCore" // Core
-				, "EditorFramework" // FEditorDelegates::FToolkitManager
 				, "EditorStyle" // Property types customizations
 				, "ToolWidgets" // SSearchableComboBox
 				, "DataTableEditor", "DesktopPlatform", "EditorFramework", "ToolMenus" // Editor data table

@@ -6,8 +6,6 @@
 
 #include "BmrMoverComponent.generated.h"
 
-enum class ECurrentGameState : uint8;
-
 /*
  * Replaces the Character Movement Component (CMR) for next purposes:
  * - Better local movement prediction causing less jittering.
@@ -24,17 +22,22 @@ public:
 	/** Moves owner in given direction.
 	 * Is called by both player (from input) and AI.
 	 * @param Direction - Normalized direction to move in the world space, can be zero to stop moving. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]")
 	void RequestMoveByIntent(const FVector& Direction);
 
+	/** Instantly teleports owner to given location, useful for respawning or level transitions.
+	 * Should be called instead of setting actor location directly to avoid desyncs in simulation. */
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]")
+	void TeleportToLocation(const FVector& InLocation);
+
 	/** When blocked, all movement inputs are ignored and the owner pawn will not move.
-	 * Alternatively, UPlayerDataAsset::BlockMovementEffectInternal can be applied/removed directly. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	 * Alternatively, UBmrPlayerDataAsset::BlockMovementEffect can be applied/removed directly. */
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]")
 	void SetBlockMovement(bool bShouldBlock);
 
 	/** Returns true if move inputs are currently ignored and the owner pawn can not move.
 	 * Alternatively, BmrGameplayTags::GameplayEffect::Block::Movement tag can be checked directly. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]")
 	bool IsBlockedMovement() const;
 
 	/*********************************************************************************************
@@ -43,13 +46,13 @@ public:
 protected:
 	/** Cached move input for the current simulation frame.
 	 * This is used to accumulate user input or AI state into a single vector that can be processed by the movement system. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "C++", meta = (BlueprintProtected, DisplayName = "Current Move Input"))
-	FVector CurrentMoveInputInternal = FVector::ZeroVector;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "[Bomber]", meta = (BlueprintProtected))
+	FVector CurrentMoveInput = FVector::ZeroVector;
 
 	/** Cached skate power-up attribute value.
-	 * Is used in walking mode to increase the movement speed when player picked up a Skate item. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "C++", meta = (BlueprintProtected, DisplayName = "Cached Skate Powerup Value"))
-	float CachedSkatePowerupAttributeInternal = 0.f;
+	 * Is used in walking mode to increase the movement speed when player picked up a Skate powerup. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Transient, Category = "[Bomber]", meta = (BlueprintProtected))
+	float CachedSkatePowerupAttribute = 0.f;
 
 	/*********************************************************************************************
 	 * Overrides
@@ -66,37 +69,48 @@ protected:
 	 ********************************************************************************************* */
 protected:
 	/** Is called when this character is ready to be used. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnCharacterReady(class APlayerCharacter* PlayerCharacter, int32 CharacterID);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnPawnReady(const struct FGameplayEventData& Payload);
 
 	/** Listen to react when entered to different game state. */
-	UFUNCTION(BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnGameStateChanged(ECurrentGameState CurrentGameState);
-
-	/** Called when owner is added on the Generated Map, on both server and client. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnOwnerAddedToLevel(class UMapComponent* MapComponent);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnGameStateChanged(const struct FGameplayEventData& Payload);
 
 	/** Called when owner is unregistered from the Generated Map, on both server and client. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnPreRemovedFromLevel(class UMapComponent* MapComponent, UObject* DestroyCauser);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnPreRemovedFromLevel(class UBmrMapComponent* MapComponent, UObject* DestroyCauser);
 
 	/** Event called after a pawn's controller has changed, on the server and owning client. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnControllerChanged(APawn* Pawn, AController* OldController, AController* NewController);
 
 	/** Broadcast at the end of a simulation tick after movement has occurred, but allowing additions/modifications to the state. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnPostMove(const FMoverTimeStep& TimeStep, FMoverSyncState& SyncState, FMoverAuxStateContext& AuxState);
 
+	/** Called when queued teleport effect successfully applies, on every endpoint that ran simulation.
+	 * @param FromLocation - World location owner was at before teleport.
+	 * @param FromRotation - World rotation owner had before teleport.
+	 * @param ToLocation - World location owner was placed at by teleport.
+	 * @param ToRotation - World rotation owner was placed at by teleport. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnTeleported(const FVector& FromLocation, const FQuat& FromRotation, const FVector& ToLocation, const FQuat& ToRotation);
+
+	/** Called between movement mode's GenerateMove and SimulationTick on every endpoint, with chance to rewrite proposed move before it is consumed.
+	 * @param StartState - Mover tick start data including post-instant-effect sync state.
+	 * @param TimeStep - Sub-step time data for current simulation step.
+	 * @param OutProposedMove - Proposed move generated by active mode that will be applied by SimulationTick. */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnProcessGeneratedMove(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove);
+
 	/** Is called by Move Input Action when player pressed the move input button, e.g: WASD or Arrow keys.*/
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnMoveInputTriggered(const struct FInputActionValue& ActionValue);
 
 	/** Is called by Move Input Action when player released the move input button, e.g: WASD or Arrow keys. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnMoveInputCompleted(const struct FInputActionValue& ActionValue);
 
-	/** Is called when the Skate attribute is changed, e.g: when player picked up a Skate item. */
+	/** Is called when the Skate attribute is changed, e.g: when player picked up a Skate powerup. */
 	void OnSkateAttributeChanged(const struct FOnAttributeChangeData& OnAttributeChangeData);
 };

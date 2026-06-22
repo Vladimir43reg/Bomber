@@ -1,22 +1,27 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "Widgets/NewMainMenuWidget.h"
 
 // NMM
 #include "Components/NMMSpotComponent.h"
+#include "Data/NmmStateTag.h"
 #include "NMMUtils.h"
+#include "NmmGameplayTags.h"
 #include "Subsystems/NMMBaseSubsystem.h"
 #include "Subsystems/NMMSpotsSubsystem.h"
 
 // Bomber
-#include "Components/MySkeletalMeshComponent.h"
-#include "Controllers/MyPlayerController.h"
-#include "Subsystems/SoundsSubsystem.h"
+#include "Components/BmrSkeletalMeshComponent.h"
+#include "Controllers/BmrPlayerController.h"
+#include "Subsystems/BmrSoundsSubsystem.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
 #include "UI/SettingsWidget.h"
-#include "UtilityLibraries/MyBlueprintFunctionLibrary.h"
+#include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 
 // UE
 #include "Components/Button.h"
+#include "GameFramework/Pawn.h"
+#include "InputActionValue.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NewMainMenuWidget)
@@ -25,14 +30,6 @@
 void UNewMainMenuWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
-
-	BIND_ON_MENU_STATE_CHANGED(this, ThisClass::OnNewMainMenuStateChanged);
-
-	if (UNMMBaseSubsystem::Get().GetCurrentMenuState() == ENMMState::None)
-	{
-		// Hide this widget by default if is none state
-		SetVisibility(ESlateVisibility::Collapsed);
-	}
 
 	if (PlayButton)
 	{
@@ -71,45 +68,59 @@ void UNewMainMenuWidget::NativeConstruct()
 	}
 }
 
-void UNewMainMenuWidget::OnNewMainMenuStateChanged_Implementation(ENMMState NewState, ENMMState PreviousState)
+// Called when the widget is removed from the viewport
+void UNewMainMenuWidget::NativeDestruct()
 {
-	// Show this widget in Idle Menu state
-	SetVisibility(NewState == ENMMState::Idle ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	// Clear cached PlayButtonPressed so late-binding listeners receive fresh data on next menu load
+	UGlobalMessageSubsystem::ClearCachedMessages(NmmGameplayTags::Event::PlayButtonPressed, this);
+
+	Super::NativeDestruct();
 }
 
 // Is called when player pressed the button to start the game
 void UNewMainMenuWidget::OnPlayButtonPressed()
 {
-	AMyPlayerController* MyPC = GetOwningPlayer<AMyPlayerController>();
+	ABmrPlayerController* MyPC = GetOwningPlayer<ABmrPlayerController>();
 	if (!ensureMsgf(MyPC, TEXT("ASSERT: [%i] %hs:\n'MyPc' is not valid!"), __LINE__, __FUNCTION__))
 	{
 		return;
 	}
 
-	const UNMMSpotComponent* MainMenuSpot = UNMMSpotsSubsystem::Get().GetCurrentSpot();
-	const FNMMCinematicRow& CinematicRow = MainMenuSpot ? MainMenuSpot->GetCinematicRow() : FNMMCinematicRow::Empty;
-	if (!ensureMsgf(CinematicRow.IsValid(), TEXT("ASSERT: [%i] %hs:\n'CinematicRow' is not valid!"), __LINE__, __FUNCTION__)
-	    || !MainMenuSpot->IsSpotAvailable())
+	UBmrSoundsSubsystem::Get().PlayUIClickSFX();
+
+	// In Idle+ states, validate spot and potentially run cinematic instead of broadcasting directly
+	if (UNMMUtils::GetMainMenuState() != FNmmStateTag::BasicMenu)
 	{
-		// The spot is locked
-		return;
+		const UNMMSpotComponent* MainMenuSpot = UNMMSpotsSubsystem::Get().GetCurrentSpot();
+		const FBmrCinematicRow& CinematicRow = MainMenuSpot ? MainMenuSpot->GetCinematicRow() : FBmrCinematicRow::Empty;
+		if (!ensureMsgf(CinematicRow.IsValid(), TEXT("ASSERT: [%i] %hs:\n'CinematicRow' is not valid!"), __LINE__, __FUNCTION__)
+		    || !MainMenuSpot->IsSpotAvailable())
+		{
+			return;
+		}
+
+		if (!MainMenuSpot->IsSpotSkinAvailable())
+		{
+			return;
+		}
+
+		if (!UNMMUtils::ShouldSkipCinematic(CinematicRow))
+		{
+			UNMMBaseSubsystem::Get().SetNewMainMenuState(FNmmStateTag::Cinematic);
+			return;
+		}
 	}
 
-	if (!MainMenuSpot->IsSpotSkinAvailable())
-	{
-		// the spot's skin unavailable
-		return;
-	}
+	// Notify that user clicked Play button in BasicMenu or cinematic skipped
+	FGameplayEventData EventData;
+	EventData.EventTag = NmmGameplayTags::Event::PlayButtonPressed;
+	EventData.Instigator = MyPC->GetPawn();
+	UGlobalMessageSubsystem::BroadcastGlobalMessage(EventData);
 
-	USoundsSubsystem::Get().PlayUIClickSFX();
-
-	if (UNMMUtils::ShouldSkipCinematic(CinematicRow))
+	// This button might be pressed locally by user, send event to server if has no authority
+	if (!MyPC->HasAuthority())
 	{
-		MyPC->SetGameStartingState();
-	}
-	else
-	{
-		UNMMBaseSubsystem::Get().SetNewMainMenuState(ENMMState::Cinematic);
+		MyPC->ServerBroadcastMessage(EventData);
 	}
 }
 
@@ -127,6 +138,13 @@ void UNewMainMenuWidget::OnPrevPlayerButtonPressed()
 	SwitchCurrentPlayer(PrevPlayer);
 }
 
+// Is called when player switches previewed character by input keys
+void UNewMainMenuWidget::OnSwitchPlayer_Implementation(const FInputActionValue& Value)
+{
+	const int32 Incrementer = FMath::Sign(Value.Get<float>());
+	SwitchCurrentPlayer(Incrementer);
+}
+
 // Sets the preview mesh of a player depending on specified incrementer
 void UNewMainMenuWidget::SwitchCurrentPlayer(int32 Incrementer)
 {
@@ -136,7 +154,7 @@ void UNewMainMenuWidget::SwitchCurrentPlayer(int32 Incrementer)
 	}
 
 	// Play the sound
-	USoundsSubsystem::Get().PlayUIClickSFX();
+	UBmrSoundsSubsystem::Get().PlayUIClickSFX();
 
 	// Switch the Main Menu spot
 	UNMMSpotsSubsystem::Get().MoveMainMenuSpot(Incrementer);
@@ -153,11 +171,17 @@ void UNewMainMenuWidget::OnNextSkinButtonPressed()
 		return;
 	}
 
-	USoundsSubsystem::Get().PlayUIClickSFX();
+	UBmrSoundsSubsystem::Get().PlayUIClickSFX();
 
-	// Switch the preview skin on the spot
-	UMySkeletalMeshComponent& MeshComp = MainMenuSpot->GetMeshChecked();
-	const int32 NextSkinIndex = (MeshComp.GetAppliedSkinIndex() + 1) % MeshComp.GetSkinTexturesNum();
+	// Switch the preview skin on the spot, skip if no skins available yet (DR rows not cached)
+	UBmrSkeletalMeshComponent& MeshComp = MainMenuSpot->GetMeshChecked();
+	const int32 SkinsNum = MeshComp.GetSkinTexturesNum();
+	if (!ensureMsgf(SkinsNum > 0, TEXT("ASSERT: [%i] %hs:\nSkin button pressed, but no skins available for current spot!"), __LINE__, __FUNCTION__))
+	{
+		return;
+	}
+
+	const int32 NextSkinIndex = (MeshComp.GetAppliedSkinIndex() + 1) % SkinsNum;
 	MeshComp.ApplySkinByIndex(NextSkinIndex);
 
 	// Update in-game player skin
@@ -167,7 +191,7 @@ void UNewMainMenuWidget::OnNextSkinButtonPressed()
 // Is called when player pressed the button to open the Settings
 void UNewMainMenuWidget::OnSettingsButtonPressed()
 {
-	if (USettingsWidget* SettingsWidget = UMyBlueprintFunctionLibrary::GetSettingsWidget())
+	if (USettingsWidget* SettingsWidget = UBmrBlueprintFunctionLibrary::GetSettingsWidget())
 	{
 		SettingsWidget->OpenSettings();
 	}
@@ -176,6 +200,6 @@ void UNewMainMenuWidget::OnSettingsButtonPressed()
 // Is called when player pressed the button to quit the game
 void UNewMainMenuWidget::OnQuitGameButtonPressed()
 {
-	AMyPlayerController* MyPC = GetOwningPlayer<AMyPlayerController>();
+	ABmrPlayerController* MyPC = GetOwningPlayer<ABmrPlayerController>();
 	UKismetSystemLibrary::QuitGame(this, MyPC, EQuitPreference::Background, false);
 }

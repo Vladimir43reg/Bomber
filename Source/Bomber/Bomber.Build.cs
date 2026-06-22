@@ -7,7 +7,6 @@ public class Bomber : ModuleRules
 	public Bomber(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		CppStandard = CppStandardVersion.Latest;
 		CppCompileWarningSettings.NonInlinedGenCppWarningLevel = WarningLevel.Error;
 
 		// Network: enable Iris replication
@@ -18,16 +17,17 @@ public class Bomber : ModuleRules
 		    {
                 "Core" // Core
                 , "UMG" // UUserWidget creation
-                , "EnhancedInput" // Created UMyInputAction, UMyInputMappingContext
-                , "DeveloperSettings" // Created UDataAssetsContainer
+                , "EnhancedInput" // Created UBmrInputAction, UBmrInputMappingContext
+                , "DeveloperSettings" // Created UBmrDataAssetsContainer
                 , "GameFeatures" // Inherited IGameFeatureStateChangeObserver
                 , "GameplayAbilities", "GameplayTags", "GameplayTasks" // Gameplay Ability System (GAS)
                 , "Mover" // Created UBmrMoverComponent, UBmrMoverWalkingMode
-                //My modules
-                , "FunctionPicker" // Created properties in UMyInputAction
-                , "MetaCheatManager" // Created UMyCheatManager
-                , "PoolManager" // Created property in FMapComponentSpec
+                // Bomber plugins
+                , "FunctionPicker" // Created properties in UBmrInputAction
+                , "MetaCheatManager" // Created UBmrCheatManager
+                , "PoolManager" // Created UBmrPoolFactory_Pawn
                 , "MyUtils" // Inherited from Base classes
+                , "DataAssetsLoader" // Created BMR data assets
 		    }
 		);
 
@@ -42,11 +42,14 @@ public class Bomber : ModuleRules
 				, "AIModule" // AI
 				, "Niagara" // VFX
 				, "GameplayTags" // FGameplayTag
-                , "ModularGameplay" // Modular Game Features (MGF)
+                , "LevelSequence" // FBmrCinematicRow
+                , "ModularGameplay" // Game Feature Plugins (GFP)
                 , "ModelViewViewModel" // MVVM UI pattern
-				//My modules
+                , "StateTreeModule", "GameplayStateTreeModule" // State Trees
+				// Bomber plugins
 				, "SettingsWidgetConstructor" // Generates settings
 				, "AdvancedSessions", "AdvancedSteamSessions" // Steam
+				, "GameFeaturePluginsManager" // UGfpmUtils
 			}
 		);
 
@@ -57,7 +60,7 @@ public class Bomber : ModuleRules
 				{
 					"UnrealEd" // FEditorDelegates
 					//My modules
-					, "BomberEditor" // UMyUnrealEdEngine
+					, "BomberEditor" // UBmrUnrealEdEngine
 					, "MyEditorUtils" // FEditorUtilsLibrary
 				}
 			);

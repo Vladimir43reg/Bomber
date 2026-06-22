@@ -1,21 +1,25 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "Subsystems/NMMCameraSubsystem.h"
 
 // NMM
 #include "Components/NMMSpotComponent.h"
 #include "Data/NMMDataAsset.h"
+#include "Data/NmmStateTag.h"
 #include "NMMUtils.h"
+#include "NmmGameplayTags.h"
 #include "Subsystems/NMMBaseSubsystem.h"
 #include "Subsystems/NMMInGameSettingsSubsystem.h"
 #include "Subsystems/NMMSpotsSubsystem.h"
 
 // Bomber
-#include "Components/MyCameraComponent.h"
-#include "Controllers/MyPlayerController.h"
+#include "Components/BmrCameraComponent.h"
+#include "Controllers/BmrPlayerController.h"
+#include "DalSubsystem.h"
 #include "MyUtilsLibraries/CinematicUtils.h"
 #include "MyUtilsLibraries/GameplayUtilsLibrary.h"
-#include "UtilityLibraries/MyBlueprintFunctionLibrary.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
+#include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 
 // UE
 #include "Camera/CameraActor.h"
@@ -35,27 +39,25 @@ UNMMCameraSubsystem& UNMMCameraSubsystem::Get(const UObject* OptionalWorldContex
 }
 
 // Returns current camera component depending on the current Menu state
-UCameraComponent* UNMMCameraSubsystem::FindCameraComponent(ENMMState MainMenuState)
+UCameraComponent* UNMMCameraSubsystem::FindCameraComponent(FNmmStateTag MenuState)
 {
-	switch (MainMenuState)
+	if (!MenuState.IsValid()
+	    || MenuState == FNmmStateTag::BasicMenu)
 	{
-		case ENMMState::None:
-		{
-			return UMyBlueprintFunctionLibrary::GetLevelCamera();
-		}
-		case ENMMState::Transition:
-		{
-			const ACameraActor* CurrentRailCamera = GetCurrentRailCamera();
-			return CurrentRailCamera ? CurrentRailCamera->GetCameraComponent() : nullptr;
-		}
-		case ENMMState::Idle: // Fall through
-		case ENMMState::Cinematic:
-		{
-			const UNMMSpotComponent* CurrentSpot = UNMMSpotsSubsystem::Get().GetCurrentSpot();
-			ULevelSequencePlayer* MasterPlayer = CurrentSpot ? CurrentSpot->GetMasterPlayer() : nullptr;
-			return MasterPlayer ? UCinematicUtils::FindSequenceCameraComponent(MasterPlayer) : nullptr;
-		}
-		default: break;
+		return UBmrBlueprintFunctionLibrary::GetLevelCamera();
+	}
+
+	if (MenuState == FNmmStateTag::Transition)
+	{
+		const ACameraActor* CurrentRailCamera = GetCurrentRailCamera();
+		return CurrentRailCamera ? CurrentRailCamera->GetCameraComponent() : nullptr;
+	}
+
+	if ((FNmmStateTag::Idle | FNmmStateTag::Cinematic).HasTag(MenuState))
+	{
+		const UNMMSpotComponent* CurrentSpot = UNMMSpotsSubsystem::Get().GetCurrentSpot();
+		ULevelSequencePlayer* MasterPlayer = CurrentSpot ? CurrentSpot->GetMasterPlayer() : nullptr;
+		return MasterPlayer ? UCinematicUtils::FindSequenceCameraComponent(MasterPlayer) : nullptr;
 	}
 
 	return nullptr;
@@ -75,24 +77,25 @@ ACineCameraRigRail* UNMMCameraSubsystem::GetCurrentRailRig()
 	// The Rail Rig is attached right to the spot
 	constexpr int32 ForwardDir = 1;
 	const UNMMSpotsSubsystem& SpotsSubsystem = UNMMSpotsSubsystem::Get();
-	const UNMMSpotComponent* MenuSpot = IsCameraForwardTransition()
-	                                        ? SpotsSubsystem.GetCurrentSpot()
-	                                        : SpotsSubsystem.GetNextSpot(ForwardDir, UMyBlueprintFunctionLibrary::GetLevelType());
+	const UNMMSpotComponent* MenuSpot = IsCameraForwardTransition() ? SpotsSubsystem.GetCurrentSpot() : SpotsSubsystem.GetNextSpot(ForwardDir);
 	return MenuSpot ? UGameplayUtilsLibrary::GetAttachedActorByClass<ACineCameraRigRail>(MenuSpot->GetOwner()) : nullptr;
 }
 
 // Starts viewing through camera of current cinematic
-void UNMMCameraSubsystem::PossessCamera(ENMMState MainMenuState)
+void UNMMCameraSubsystem::PossessCamera(FNmmStateTag MenuState)
 {
 	const UNMMSpotsSubsystem& SpotsSubsystem = UNMMSpotsSubsystem::Get();
-	if (!SpotsSubsystem.IsActiveMenuSpotReady())
+	if (!SpotsSubsystem.IsActiveMenuSpotReady()
+	    && MenuState != FNmmStateTag::BasicMenu
+	    && MenuState.IsValid())
 	{
 		// Ignore if there is no active spot initialized yet, it will be called once the spot is ready
+		// BasicMenu and None target the level camera and do not require a spot
 		return;
 	}
 
-	AMyPlayerController* MyPC = UMyBlueprintFunctionLibrary::GetLocalPlayerController();
-	const UCameraComponent* CameraComponent = FindCameraComponent(MainMenuState);
+	ABmrPlayerController* MyPC = UBmrBlueprintFunctionLibrary::GetLocalPlayerController();
+	const UCameraComponent* CameraComponent = FindCameraComponent(MenuState);
 	if (!ensureMsgf(MyPC, TEXT("ASSERT: [%i] %s:\n'MyPC' is not valid!"), __LINE__, *FString(__FUNCTION__))
 	    || !ensureMsgf(CameraComponent, TEXT("ASSERT: [%i] %s:\n'CameraComponent' is not valid!"), __LINE__, *FString(__FUNCTION__))
 	    || MyPC->GetViewTarget() == CameraComponent->GetOwner()) // Already possessed
@@ -103,20 +106,15 @@ void UNMMCameraSubsystem::PossessCamera(ENMMState MainMenuState)
 	FViewTargetTransitionParams BlendParams;
 	const float CameraBlendTime = UNMMDataAsset::Get().GetCameraBlendTime();
 
-	switch (MainMenuState)
+	if (MenuState == FNmmStateTag::Transition)
 	{
-		case ENMMState::Transition:
-			BlendParams.BlendTime = CameraBlendTime;
-			break;
-
-		case ENMMState::Idle:
-			if (!UNMMInGameSettingsSubsystem::Get().IsInstantCharacterSwitchEnabled()
-			    && SpotsSubsystem.GetLastMoveSpotDirection() != 0)
-			{
-				BlendParams.BlendTime = CameraBlendTime;
-			}
-			break;
-		default: break;
+		BlendParams.BlendTime = CameraBlendTime;
+	}
+	else if (MenuState == FNmmStateTag::Idle
+	         && !UNMMInGameSettingsSubsystem::Get().IsInstantCharacterSwitchEnabled()
+	         && SpotsSubsystem.GetLastMoveSpotDirection() != 0)
+	{
+		BlendParams.BlendTime = CameraBlendTime;
 	}
 
 	MyPC->SetViewTarget(CameraComponent->GetOwner(), BlendParams);
@@ -126,17 +124,21 @@ void UNMMCameraSubsystem::PossessCamera(ENMMState MainMenuState)
  * Overrides
  ********************************************************************************************* */
 
-void UNMMCameraSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+// Subscribes to menu state events
+void UNMMCameraSubsystem::OnGameFeatureInitialize_Implementation()
 {
-	Super::OnWorldBeginPlay(InWorld);
-
-	BIND_ON_MENU_STATE_CHANGED(this, ThisClass::OnNewMainMenuStateChanged);
+	UDalSubsystem::Get().ListenForDataAsset<UNMMDataAsset>(this, &ThisClass::OnDataAssetLoaded);
 }
 
-// Return the stat id to use for this tickable
-TStatId UNMMCameraSubsystem::GetStatId() const
+// Clears all transient data contained in this subsystem
+void UNMMCameraSubsystem::OnGameFeatureDeinitialize_Implementation()
 {
-	RETURN_QUICK_DECLARE_CYCLE_STAT(ThisClass, STATGROUP_Tickables);
+	UGlobalMessageSubsystem::StopListeningForAllGlobalMessages(this);
+
+	if (UNMMSpotsSubsystem* SpotsSubsystem = UNMMUtils::GetSpotsSubsystem())
+	{
+		SpotsSubsystem->OnActiveMenuSpotReady.RemoveAll(this);
+	}
 }
 
 // Is called every frame to move the camera
@@ -144,11 +146,23 @@ void UNMMCameraSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!bIsBlendingInOutInternal
-	    && UNMMUtils::GetMainMenuState() == ENMMState::Transition)
+	if (!bIsBlendingInOut
+	    && UNMMUtils::GetMainMenuState() == FNmmStateTag::Transition)
 	{
 		TickTransition(DeltaTime);
 	}
+}
+
+// Overridden to skip creation on dedicated server, where camera should not run
+bool UNMMCameraSubsystem::ShouldCreateSubsystem(UObject* Outer) const
+{
+	if (!Super::ShouldCreateSubsystem(Outer))
+	{
+		return false;
+	}
+
+	const UWorld& World = *CastChecked<UWorld>(Outer);
+	return !World.IsNetMode(NM_DedicatedServer);
 }
 
 /*********************************************************************************************
@@ -156,16 +170,42 @@ void UNMMCameraSubsystem::Tick(float DeltaTime)
  ********************************************************************************************* */
 
 // Called when the Main Menu state was changed
-void UNMMCameraSubsystem::OnNewMainMenuStateChanged_Implementation(ENMMState NewState, ENMMState PreviousState)
+void UNMMCameraSubsystem::OnNewMainMenuStateChanged_Implementation(const FGameplayEventData& Payload)
 {
-	switch (NewState)
+	const FNmmStateTag NewState(Payload.InstigatorTags.First());
+
+	if (NewState == FNmmStateTag::BasicMenu
+	    || !NewState.IsValid())
 	{
-		case ENMMState::Transition:
-			// Start blending the camera towards current spot on the rail
-			OnBeginTransition();
-			break;
-		default: break;
+		// BasicMenu and None both target the level camera
+		// Idle/Cinematic possession flows through OnActiveMenuSpotReady after the spot plays
+		PossessCamera(NewState);
 	}
+	else if (NewState == FNmmStateTag::Transition)
+	{
+		// Start blending the camera towards current spot on the rail
+		OnBeginTransition();
+	}
+}
+
+// Called when a cinematic spot finished loading, possesses camera if it was deferred
+void UNMMCameraSubsystem::OnActiveMenuSpotReady_Implementation(UNMMSpotComponent* /*MainMenuSpotComponent*/)
+{
+	const FNmmStateTag CurrentState = UNMMBaseSubsystem::Get().GetCurrentMenuState();
+	if ((FNmmStateTag::Idle | FNmmStateTag::Cinematic).HasTag(CurrentState))
+	{
+		PossessCamera(CurrentState);
+	}
+}
+
+// Called when the NMM data asset is loaded and available
+void UNMMCameraSubsystem::OnDataAssetLoaded_Implementation(const UNMMDataAsset* DataAsset)
+{
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(NmmGameplayTags::Event::MenuStateChanged, this, &ThisClass::OnNewMainMenuStateChanged);
+
+	// Listen for spot readiness to possess camera when async-loaded spot becomes available
+	UNMMSpotsSubsystem& SpotsSubsystem = UNMMSpotsSubsystem::Get();
+	SpotsSubsystem.OnActiveMenuSpotReady.AddUniqueDynamic(this, &ThisClass::OnActiveMenuSpotReady);
 }
 
 /*********************************************************************************************
@@ -193,13 +233,13 @@ float UNMMCameraSubsystem::GetCameraLastTransitionValue()
 // Applies the new state of camera rail transition state
 void UNMMCameraSubsystem::SetNewCameraRailTransitionState(ENMMCameraRailTransitionState NewCameraRailState)
 {
-	if (NewCameraRailState == CameraRailTransitionStateInternal)
+	if (NewCameraRailState == CameraRailTransitionState)
 	{
 		return;
 	}
 
-	CameraRailTransitionStateInternal = NewCameraRailState;
-	OnCameraRailTransitionStateChanged.Broadcast(CameraRailTransitionStateInternal);
+	CameraRailTransitionState = NewCameraRailState;
+	OnCameraRailTransitionStateChanged.Broadcast(CameraRailTransitionState);
 }
 
 // Is called on starts blending the camera towards current spot on the rail
@@ -217,37 +257,41 @@ void UNMMCameraSubsystem::OnBeginTransition()
 	CurrentRailRig->AbsolutePositionOnRail = GetCameraStartTransitionValue();
 
 	// Transition state is started, so we need to blend the gap between initial spot and beginning of the rail
-	bIsBlendingInOutInternal = true;
-	PossessCamera(ENMMState::Transition);
+	bIsBlendingInOut = true;
+	PossessCamera(FNmmStateTag::Transition);
 
 	// Trigger rail once the camera is blended
 	FTimerHandle BlendTimerHandle;
 	const float TransitionToIdleBlendTime = UNMMDataAsset::Get().GetCameraBlendTime();
 	GetWorldRef().GetTimerManager().SetTimer(BlendTimerHandle, []
 	{
-		Get().bIsBlendingInOutInternal = false;
+		Get().bIsBlendingInOut = false;
 	}, TransitionToIdleBlendTime, false);
 
 	SetNewCameraRailTransitionState(ENMMCameraRailTransitionState::BeginTransition);
+
+	SetTickableTickType(ETickableTickType::Conditional);
 }
 
 // Is called on finishes blending the camera towards current spot on the rail
 void UNMMCameraSubsystem::OnEndTransition()
 {
 	// Rail is finish, so we need to blend the gap between the end of rail and the camera spot
-	bIsBlendingInOutInternal = true;
-	PossessCamera(ENMMState::Idle);
+	bIsBlendingInOut = true;
+	PossessCamera(FNmmStateTag::Idle);
 
 	// Finish Transition state once the camera is blended
 	FTimerHandle BlendTimerHandle;
 	const float TransitionToIdleBlendTime = UNMMDataAsset::Get().GetCameraBlendTime();
 	GetWorldRef().GetTimerManager().SetTimer(BlendTimerHandle, []
 	{
-		Get().bIsBlendingInOutInternal = false;
-		UNMMBaseSubsystem::Get().SetNewMainMenuState(ENMMState::Idle);
+		Get().bIsBlendingInOut = false;
+		UNMMBaseSubsystem::Get().SetNewMainMenuState(FNmmStateTag::Idle);
 	}, TransitionToIdleBlendTime, false);
 
 	SetNewCameraRailTransitionState(ENMMCameraRailTransitionState::EndTransition);
+
+	SetTickableTickType(ETickableTickType::Never);
 }
 
 // Is called in tick to update the camera transition when transitioning
@@ -269,7 +313,7 @@ void UNMMCameraSubsystem::TickTransition(float DeltaTime)
 
 	// checks if it's halfway of transition
 	constexpr float HalfwayPosition = 0.5f;
-	if (CameraRailTransitionStateInternal != ENMMCameraRailTransitionState::HalfwayTransition
+	if (CameraRailTransitionState != ENMMCameraRailTransitionState::HalfwayTransition
 	    && FMath::IsNearlyEqual(Progress, HalfwayPosition, DeltaTime))
 	{
 		SetNewCameraRailTransitionState(ENMMCameraRailTransitionState::HalfwayTransition);

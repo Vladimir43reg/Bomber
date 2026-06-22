@@ -15,20 +15,13 @@ struct BOMBER_API FBmrPowerupTag : public FGameplayTag
 {
 	GENERATED_BODY()
 
-	/** The Powerup tag that contains nothing chosen by default. */
-	static const FBmrPowerupTag None;
+	static const FBmrPowerupTag None; // Empty tag, nothing chosen by default
+	static const FBmrPowerupTag Skate; // Increases the player's movement speed
+	static const FBmrPowerupTag Bomb; // Increases the number of bombs that can be placed at once
+	static const FBmrPowerupTag Fire; // Increases the explosion radius of bombs
 
-	/** Increases the player's movement speed. */
-	static const FBmrPowerupTag Skate;
-
-	/** Increases the number of bombs that can be placed at once. */
-	static const FBmrPowerupTag Bomb;
-
-	/** Increases the explosion radius of bombs. */
-	static const FBmrPowerupTag Fire;
-
-	/** Returns all powerup tags, useful for iterating, wrapped in a function for deferred allocation on first call. */
-	static const FGameplayTagContainer& GetAll();
+	/** Returns all powerup tags gathered from Data Registry, falls back to hardcoded tags if DR is not loaded yet */
+	static FGameplayTagContainer GetAll();
 
 	/** Default constructor. */
 	FBmrPowerupTag() = default;

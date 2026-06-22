@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "MyUtilsLibraries/MultiplayerUtilsLibrary.h"
 
@@ -6,6 +6,7 @@
 #include "MyUtilsLibraries/UtilsLibrary.h"
 
 // UE
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerState.h"
@@ -87,4 +88,30 @@ float UMultiplayerUtilsLibrary::GetPingMs()
 	const APlayerController* PlayerController = World ? World->GetFirstPlayerController() : nullptr;
 	const APlayerState* LocalPlayerState = PlayerController ? PlayerController->PlayerState : nullptr;
 	return LocalPlayerState ? LocalPlayerState->GetPingInMilliseconds() : 0.f;
+}
+
+// Returns player's ping in seconds
+float UMultiplayerUtilsLibrary::GetPlayerPingSeconds(const APawn* InPawn)
+{
+	const APlayerState* PlayerState = InPawn ? InPawn->GetPlayerState<APlayerState>() : nullptr;
+	return PlayerState ? FTimespan::FromMilliseconds(PlayerState->GetPingInMilliseconds()).GetTotalSeconds() : 0.f;
+}
+
+// Returns true if any local world context is mid-resolving a pending net travel
+bool UMultiplayerUtilsLibrary::IsAnyWorldPendingNetTravel()
+{
+	if (!GEngine)
+	{
+		return false;
+	}
+
+	for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
+	{
+		if (WorldContext.PendingNetGame)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }

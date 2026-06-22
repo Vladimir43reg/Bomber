@@ -1,22 +1,18 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #pragma once
 
-#include "Subsystems/WorldSubsystem.h"
+#include "Subsystems/GfpmWorldSubsystem.h"
 
 #include "NMMSpotsSubsystem.generated.h"
 
 class UNMMSpotComponent;
 
-enum class ELevelType : uint8;
-enum class ENMMState : uint8;
-enum class ECurrentGameState : uint8;
-
 /**
  * Manages Main Menu cinematic spots and keeps their data.
  */
 UCLASS(BlueprintType, Blueprintable)
-class NEWMAINMENU_API UNMMSpotsSubsystem : public UWorldSubsystem
+class NEWMAINMENU_API UNMMSpotsSubsystem : public UGfpmWorldSubsystem
 {
 	GENERATED_BODY()
 
@@ -27,49 +23,64 @@ public:
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FNMMOnSpotReady, UNMMSpotComponent*, MainMenuSpotComponent);
 
 	/** Called when the spot is fully initialized: is spawned on the level and finished loading its Master Sequence. */
-	UPROPERTY(BlueprintCallable, BlueprintAssignable, Transient, Category = "C++")
+	UPROPERTY(BlueprintCallable, BlueprintAssignable, Transient, Category = "[NewMainMenu]")
 	FNMMOnSpotReady OnActiveMenuSpotReady;
 
 	/** Returns true if any Main-Menu spot is fully initialized: spawned on the level and finished loading its Master Sequence. */
-	UFUNCTION(BlueprintPure, Category = "C++")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
 	bool IsActiveMenuSpotReady() const;
 
-	/** Returns the index of the currently selected Main-Menu spot. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	FORCEINLINE int32 GetActiveMenuSpotIndex() const { return ActiveMenuSpotIdxInternal; }
+	/** Returns the priority of the currently selected Main-Menu spot. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	FORCEINLINE int32 GetActiveSpotPriority() const { return ActiveSpotPriority; }
+
+	/** Sets the active spot priority, allowing external components to select a spot by its priority value. */
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
+	void SetActiveSpotPriority(int32 NewPriority) { ActiveSpotPriority = NewPriority; }
 
 	/** Returns an incrementer of the last Main-Menu spot direction, is used to determine the direction of the last move. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	FORCEINLINE int32 GetLastMoveSpotDirection() const { return LastMoveSpotDirectionInternal; }
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	FORCEINLINE int32 GetLastMoveSpotDirection() const { return LastMoveSpotDirection; }
 
 	/** Add new Main-Menu spot, so it can be obtained by other objects. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	void AddNewMainMenuSpot(UNMMSpotComponent* NewMainMenuSpotComponent);
 
+	/** Reinitializes cinematic data for all spots from Data Registry. */
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
+	void ReinitializeAllSpots();
+
+	/** Activates local player's spot once all spots finished loading, nothing otherwise. */
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
+	void TryActivateMenuSpot();
+
+	/** Returns true once every cinematic spot has registered and finished loading its Master Sequence. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	bool AreAllSpotsLoaded() const;
+
 	/** Removes Main-Menu spot if should not be available by other objects anymore. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	void RemoveMainMenuSpot(UNMMSpotComponent* MainMenuSpotComponent);
 
 	/** Returns currently selected Main-Menu spot. */
-	UFUNCTION(BlueprintPure, Category = "C++")
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
 	UNMMSpotComponent* GetCurrentSpot() const;
 
-	/** Returns Main-Menu spots by given level type. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	void GetMainMenuSpotsByLevelType(TArray<UNMMSpotComponent*>& OutSpots, ELevelType LevelType) const;
+	/** Returns all valid Main-Menu spots sorted by priority */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	void GetMainMenuSpots(TArray<UNMMSpotComponent*>& OutSpots) const;
 
 	/** Returns next or previous Main-Menu spot by given incrementer.
 	 * It never exits the bounds of the array by going to the last or first element.
 	 * @param Incrementer 1 to move right, -1 to move left.
-	 * @param LevelType Level type to search in.
 	 * @return New active Main-Menu spot component. */
-	UFUNCTION(BlueprintPure, Category = "C++")
-	UNMMSpotComponent* GetNextSpot(int32 Incrementer, ELevelType LevelType) const;
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]")
+	UNMMSpotComponent* GetNextSpot(int32 Incrementer) const;
 
 	/** Goes to another Spot to show another player character on current level.
 	 * @param Incrementer 1 to move right, -1 to move left.
 	 * @return New active Main-Menu spot component. */
-	UFUNCTION(BlueprintCallable, Category = "C++")
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]")
 	UNMMSpotComponent* MoveMainMenuSpot(int32 Incrementer);
 
 	/** Is code alternative to MoveMainMenuSpot, but allows to use custom predicate,
@@ -78,42 +89,53 @@ public:
 	UNMMSpotComponent* MoveMainMenuSpotByPredicate(int32 Incrementer, const TFunctionRef<bool(UNMMSpotComponent*)>& Predicate);
 
 protected:
-	/** Index of the currently selected Main-Menu spot, is according row index in Cinematics table.
-	 * @see FCinematicRow::RowIndex. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "C++", meta = (BlueprintProtected, DisplayName = "Active Menu Spot Index"))
-	int32 ActiveMenuSpotIdxInternal = 0;
+	/** Priority of the currently selected Main-Menu spot, matches FBmrCinematicRow::Priority. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	int32 ActiveSpotPriority = INDEX_NONE;
 
 	/** Incrementer of the last Main-Menu spot direction, is used to determine the direction of the last move. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "C++", meta = (BlueprintProtected, DisplayName = "Last Move Spot Direction"))
-	int32 LastMoveSpotDirectionInternal = 0;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	int32 LastMoveSpotDirection = 0;
 
 	/** All Main Menu spots with characters placed on the level. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "C++", meta = (BlueprintProtected, DisplayName = "Main-Menu Spots"))
-	TArray<TObjectPtr<UNMMSpotComponent>> MainMenuSpotsInternal;
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	TArray<TObjectPtr<UNMMSpotComponent>> MainMenuSpots;
+
+	/** Returns deterministic highest-priority spot on first resolution, then spot matching active spot priority once it is set, null while that spot is still loading. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	UNMMSpotComponent* FindLocalPlayerSpot() const;
+
+	/** Notifies listeners that active menu spot is ready. */
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void NotifyActiveMenuSpotReady(UNMMSpotComponent* Spot);
 
 	/** Attempts to switch the active menu spot if current slot is not available for any reason. */
-	UFUNCTION(BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
+	UFUNCTION(BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
 	void HandleUnavailableMenuSpot();
 
 	/*********************************************************************************************
 	 * Overrides
 	 ********************************************************************************************* */
 protected:
-	/** Is called when the world is initialized. */
-	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+	/** Subscribes to menu state and game state events */
+	virtual void OnGameFeatureInitialize_Implementation() override;
 
-	/** Clears all transient data contained in this subsystem. */
-	virtual void Deinitialize() override;
+	/** Clears all transient data contained in this subsystem */
+	virtual void OnGameFeatureDeinitialize_Implementation() override;
 
 	/*********************************************************************************************
 	 * Events
 	 ********************************************************************************************* */
 protected:
 	/** Called when the Main Menu state was changed. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnNewMainMenuStateChanged(ENMMState NewState, ENMMState PreviousState);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void OnNewMainMenuStateChanged(const struct FGameplayEventData& Payload);
 
 	/** Called when the current game state was changed. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "C++", meta = (BlueprintProtected))
-	void OnGameStateChanged(ECurrentGameState CurrentGameState);
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[NewMainMenu]", meta = (BlueprintProtected))
+	void OnGameStateChanged(const struct FGameplayEventData& Payload);
+
+	/** Called when cinematic Data Registry rows change and all their soft references finish async loading */
+	UFUNCTION(BlueprintNativeEvent, Category = "[NewMainMenu]")
+	void OnCinematicRowsChanged();
 };

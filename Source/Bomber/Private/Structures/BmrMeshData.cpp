@@ -6,10 +6,3 @@
 
 // The empty data
 const FBmrMeshData FBmrMeshData::Empty = FBmrMeshData();
-
-// Constructor that initializes the data directly
-FBmrMeshData::FBmrMeshData(const class ULevelActorRow* InPlayerRow, int32 InSkinIndex /* = 0*/)
-    : Row(InPlayerRow)
-    , SkinIndex(InSkinIndex)
-{
-}

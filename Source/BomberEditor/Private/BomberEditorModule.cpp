@@ -1,11 +1,13 @@
-﻿// Copyright (c) Yevhenii Selivanov.
+// Copyright (c) Yevhenii Selivanov.
 
 #include "BomberEditorModule.h"
 
 // Bomber
-#include "AttachedMeshCustomization.h"
+#include "BmrGameDifficultyTagCustomization.h"
+#include "BmrGameStateTagCustomization.h"
+#include "BmrMapTagCustomization.h"
+#include "BmrPlayerTagCustomization.h"
 #include "BmrPowerupTagCustomization.h"
-#include "PlayerTagCustomization.h"
 
 // UE
 #include "Modules/ModuleManager.h"
@@ -17,15 +19,19 @@ DEFINE_LOG_CATEGORY(LogBomberEditor);
 // Called right after the module DLL has been loaded and the module object has been created
 void FBomberEditorModule::StartupModule()
 {
-	FAttachedMeshCustomization::RegisterAttachedMeshCustomization();
-	FPlayerTagCustomization::RegisterPlayersTagCustomization();
+	FBmrGameDifficultyTagCustomization::RegisterGameDifficultyTagCustomization();
+	FBmrGameStateTagCustomization::RegisterGameStateTagCustomization();
+	FBmrMapTagCustomization::RegisterMapTagCustomization();
+	FBmrPlayerTagCustomization::RegisterPlayersTagCustomization();
 	FBmrPowerupTagCustomization::RegisterPowerupTagCustomization();
 }
 
 // Called before the module is unloaded, right before the module object is destroyed
 void FBomberEditorModule::ShutdownModule()
 {
-	FAttachedMeshCustomization::UnregisterAttachedMeshCustomization();
-	FPlayerTagCustomization::UnregisterPlayersTagCustomization();
+	FBmrGameDifficultyTagCustomization::UnregisterGameDifficultyTagCustomization();
+	FBmrGameStateTagCustomization::UnregisterGameStateTagCustomization();
+	FBmrMapTagCustomization::UnregisterMapTagCustomization();
+	FBmrPlayerTagCustomization::UnregisterPlayersTagCustomization();
 	FBmrPowerupTagCustomization::UnregisterPowerupTagCustomization();
 }

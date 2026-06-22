@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov.
+// Copyright (c) Yevhenii Selivanov.
 
 #pragma once
 
@@ -8,9 +8,9 @@
 
 namespace FTransientChecker
 {
-/** Returns true is specified object is pending kill, CDO or exists on the Transient level. */
-BOMBER_API bool IsTransient(const UObject* Obj);
-BOMBER_API bool IsTransientLevel(const UObject* Obj);
+	/** Returns true is specified object is pending kill, CDO or exists on the Transient level. */
+	BOMBER_API bool IsTransient(const UObject* Obj);
+	BOMBER_API bool IsTransientLevel(const UObject* Obj);
 } // namespace FTransientChecker
 
 /**
@@ -40,7 +40,7 @@ BOMBER_API DECLARE_LOG_CATEGORY_EXTERN(LogBomber, Log, All);
  * It is possible to make a bitmask of actors types
  */
 UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class EActorType : uint8
+enum class EBmrActorType : uint8
 {
 	///< None of the types for comparisons
 	None = 0,
@@ -49,43 +49,17 @@ enum class EActorType : uint8
 	///< A destroyable Obstacle
 	Box = 1 << 1,
 	///< A picked element giving power-up (FPowerUp struct)
-	Item = 1 << 2,
+	Powerup = 1 << 2,
 	///< A character that is controlled by a person or bot
 	Player = 1 << 3,
 	///< An absolute static and unchangeable block throughout the game
 	Wall = 1 << 4,
 	///< All actor types
-	All = Bomb | Item | Player | Wall | Box
+	All = Bomb | Powerup | Player | Wall | Box
 };
 
-ENUM_CLASS_FLAGS(EActorType);
-using EAT = EActorType;
-
-/**
- * Levels in the game.
- * In many cases is used to get the specific mesh of an level actor by the level type.
- * @see ULevelActorRow::LevelType
- */
-UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class ELevelType : uint8
-{
-	None = 0,
-	///< Represents Maya level
-	First = 1 << 0 UMETA(DisplayName = "Maya"),
-	///< Represents City level
-	Second = 1 << 1 UMETA(DisplayName = "City"),
-	///< Represents Forest level
-	Third = 1 << 2 UMETA(DisplayName = "Forest"),
-	///< Represents Water level
-	Fourth = 1 << 3 UMETA(DisplayName = "Water"),
-	///< All the types, also can be used for such levels as menu, sandbox, etc.
-	Max = First | Second | Third | Fourth UMETA(DisplayName = "Any")
-};
-
-ENUM_CLASS_FLAGS(ELevelType);
-using ELT = ELevelType;
-#define ELT_FIRST_FLAG TO_FLAG(ELT::First)
-#define ELT_LAST_FLAG TO_FLAG(ELT::Fourth)
+ENUM_CLASS_FLAGS(EBmrActorType);
+using EAT = EBmrActorType;
 
 /**
  * Pathfinding types by which cells could be found.
@@ -106,34 +80,11 @@ enum class EPathType : uint8
 };
 
 /**
- * The replicated states of the game. It shares the state between all the players at the same time.
- * Can be tracked both on host and client by binding with BIND_ON_GAME_STATE_CHANGED(this, ThisClass::OnGameStateChanged);
- */
-UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class ECurrentGameState : uint8
-{
-	None = 0,
-	///< Is active while players are in Main-Menu.
-	Menu = 1 << 0,
-	///< Is active while players see count-down time (3-2-1).
-	GameStarting = 1 << 1,
-	///< Is active when the match is finished and players see their results of the game.
-	EndGame = 1 << 2,
-	///< Is active during the active match.
-	InGame = 1 << 3,
-	///< Any of the states
-	Max = Menu | GameStarting | EndGame | InGame UMETA(DisplayName = "Any")
-};
-
-ENUM_CLASS_FLAGS(ECurrentGameState);
-using ECGS = ECurrentGameState;
-
-/**
  * The round result.
- * Can be tracked by listening AMyPlayerState::OnEndGameStateChanged delegate.
+ * Can be tracked by listening ABmrPlayerState::OnEndGameStateChanged delegate.
  */
 UENUM(BlueprintType)
-enum class EEndGameState : uint8
+enum class EBmrEndGameState : uint8
 {
 	None,
 	///< Player is last alive
@@ -150,7 +101,7 @@ enum class EEndGameState : uint8
  * Represents the type of the character.
  */
 UENUM(BlueprintType)
-enum class EPlayerType : uint8
+enum class EBmrPlayerType : uint8
 {
 	None,
 	Human,

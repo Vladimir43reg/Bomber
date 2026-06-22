@@ -3,13 +3,16 @@
 #include "Components/BmrPlayerNameWidgetComponent.h"
 
 // Bomber
-#include "GameFramework/MyGameStateBase.h"
-#include "GameFramework/MyPlayerState.h"
+#include "GameFramework/BmrGameState.h"
+#include "GameFramework/BmrPlayerState.h"
+#include "Structures/BmrGameStateTag.h"
 #include "Structures/BmrGameplayTags.h"
-#include "Subsystems/GlobalEventsSubsystem.h"
-#include "Subsystems/WidgetsSubsystem.h"
-#include "UI/Widgets/PlayerNameWidget.h"
+#include "Subsystems/BmrWidgetsSubsystem.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
+#include "UI/Widgets/BmrPlayerNameWidget.h"
+#include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 
+// UE
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrPlayerNameWidgetComponent)
 
 // Sets default values for this component's properties
@@ -41,28 +44,30 @@ UBmrPlayerNameWidgetComponent::UBmrPlayerNameWidgetComponent()
  ********************************************************************************************* */
 
 // Activates the widget component with further syncing it with the player state's name and PlayerId
-void UBmrPlayerNameWidgetComponent::Init(AMyPlayerState* PlayerState)
+void UBmrPlayerNameWidgetComponent::Init(ABmrPlayerState* PlayerState)
 {
 	if (!ensureMsgf(PlayerState, TEXT("ASSERT: [%i] %hs:\n'PlayerState' is not valid!"), __LINE__, __FUNCTION__))
 	{
 		return;
 	}
 
-	UWidgetsSubsystem* WidgetsSubsystem = UWidgetsSubsystem::GetWidgetsSubsystem();
-	if (!WidgetsSubsystem)
+	AssociatedPlayerState = PlayerState;
+
+	// Widgets must be initialized from Data Registry before creating nickname widgets
+	// OnWidgetsInitialized callback will re-call Init when widgets become available
+	UBmrWidgetsSubsystem* WidgetsSubsystem = UBmrWidgetsSubsystem::GetWidgetsSubsystem();
+	if (!WidgetsSubsystem
+	    || !WidgetsSubsystem->AreWidgetInitialized())
 	{
-		// UI Subsystem is not initialized yet or called on remote clients
 		return;
 	}
 
-	AssociatedPlayerStateInternal = PlayerState;
-
 	const int32 PlayerId = PlayerState->GetPlayerId();
-	UPlayerNameWidget* PlayerNameWidget = WidgetsSubsystem->GetWidgetByTag<UPlayerNameWidget>(BmrGameplayTags::UI::Widget_Nickname, PlayerId);
+	UBmrPlayerNameWidget* PlayerNameWidget = WidgetsSubsystem->GetWidgetByTag<UBmrPlayerNameWidget>(BmrGameplayTags::UI::Widget_Nickname, PlayerId);
 	if (!PlayerNameWidget)
 	{
 		// Widget is not created yet for specified player ID, request it now
-		PlayerNameWidget = &WidgetsSubsystem->CreateManageableWidgetByTagChecked<UPlayerNameWidget>(BmrGameplayTags::UI::Widget_Nickname);
+		PlayerNameWidget = &WidgetsSubsystem->CreateManageableWidgetByTagChecked<UBmrPlayerNameWidget>(BmrGameplayTags::UI::Widget_Nickname);
 	}
 
 	// Configure widget content and association
@@ -81,7 +86,7 @@ void UBmrPlayerNameWidgetComponent::Init(AMyPlayerState* PlayerState)
 	// Listen further updates
 	PlayerState->OnPlayerNameChanged.AddUniqueDynamic(this, &ThisClass::OnPlayerNameChanged);
 	PlayerState->OnPlayerIdChanged.AddUniqueDynamic(this, &ThisClass::OnPlayerIdChanged);
-	PlayerState->OnCharacterDeadChanged.AddUniqueDynamic(this, &ThisClass::OnCharacterDeadChanged);
+	PlayerState->OnPlayerDeadChanged.AddUniqueDynamic(this, &ThisClass::OnPlayerDeadChanged);
 }
 
 // Applies new widget visibility based on the current game state
@@ -94,9 +99,10 @@ void UBmrPlayerNameWidgetComponent::UpdateVisibility()
 		return;
 	}
 
-	const bool bMakeVisible = AMyGameStateBase::GetCurrentGameState() != ECGS::Menu
-	                          && AssociatedPlayerStateInternal
-	                          && !AssociatedPlayerStateInternal->IsCharacterDead();
+	const ABmrGameState* GameState = UBmrBlueprintFunctionLibrary::GetGameState();
+	const bool bMakeVisible = GameState && !GameState->HasMatchingGameplayTag(FBmrGameStateTag::Menu)
+	                          && AssociatedPlayerState
+	                          && !AssociatedPlayerState->IsPlayerDead();
 
 	const ESlateVisibility NewVisibility = bMakeVisible ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
 	if (InWidget->GetVisibility() != NewVisibility)
@@ -114,20 +120,12 @@ void UBmrPlayerNameWidgetComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (UWidgetsSubsystem* WidgetsSubsystem = UWidgetsSubsystem::GetWidgetsSubsystem()) // Is null on remote clients
-	{
-		WidgetsSubsystem->OnWidgetsInitialized.AddUniqueDynamic(this, &ThisClass::OnWidgetsInitialized);
-		if (WidgetsSubsystem->AreWidgetInitialized())
-		{
-			OnWidgetsInitialized();
-		}
-	}
-
-	BIND_ON_GAME_STATE_CHANGED(this, ThisClass::OnGameStateChanged);
+	BIND_ON_WIDGETS_INITIALIZED(this, ThisClass::OnWidgetsInitialized);
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(BmrGameplayTags::Event::GameState_Changed, this, &ThisClass::OnGameStateChanged);
 }
 
 // Listen to manage the component visibility
-void UBmrPlayerNameWidgetComponent::OnGameStateChanged_Implementation(ECurrentGameState CurrentGameState)
+void UBmrPlayerNameWidgetComponent::OnGameStateChanged_Implementation(const FGameplayEventData& Payload)
 {
 	UpdateVisibility();
 }
@@ -136,16 +134,16 @@ void UBmrPlayerNameWidgetComponent::OnGameStateChanged_Implementation(ECurrentGa
 void UBmrPlayerNameWidgetComponent::OnWidgetsInitialized_Implementation()
 {
 	// If the player state was set before the widgets were initialized, we can safely initialize the widget component now
-	if (AssociatedPlayerStateInternal)
+	if (AssociatedPlayerState)
 	{
-		Init(AssociatedPlayerStateInternal);
+		Init(AssociatedPlayerState);
 	}
 }
 
 // Called when changed Character's name to update the widget
 void UBmrPlayerNameWidgetComponent::OnPlayerNameChanged_Implementation(FName NewNickname)
 {
-	UPlayerNameWidget* InWidget = Cast<UPlayerNameWidget>(GetWidget());
+	UBmrPlayerNameWidget* InWidget = Cast<UBmrPlayerNameWidget>(GetWidget());
 	if (ensureMsgf(InWidget, TEXT("ASSERT: [%i] %hs:\n'Widget' is not valid!"), __LINE__, __FUNCTION__))
 	{
 		InWidget->SetPlayerName(FText::FromName(NewNickname));
@@ -155,7 +153,7 @@ void UBmrPlayerNameWidgetComponent::OnPlayerNameChanged_Implementation(FName New
 // Called when changed Character's PlayerId to update the widget
 void UBmrPlayerNameWidgetComponent::OnPlayerIdChanged_Implementation(int32 NewPlayerId)
 {
-	UPlayerNameWidget* InWidget = Cast<UPlayerNameWidget>(GetWidget());
+	UBmrPlayerNameWidget* InWidget = Cast<UBmrPlayerNameWidget>(GetWidget());
 	if (ensureMsgf(InWidget, TEXT("ASSERT: [%i] %hs:\n'Widget' is not valid!"), __LINE__, __FUNCTION__))
 	{
 		InWidget->SetAssociatedPlayerId(NewPlayerId);
@@ -163,7 +161,7 @@ void UBmrPlayerNameWidgetComponent::OnPlayerIdChanged_Implementation(int32 NewPl
 }
 
 // Called when changed character Dead status is changed to update the widget visibility
-void UBmrPlayerNameWidgetComponent::OnCharacterDeadChanged_Implementation(bool bIsCharacterDead)
+void UBmrPlayerNameWidgetComponent::OnPlayerDeadChanged_Implementation(bool bIsDead)
 {
 	UpdateVisibility();
 }

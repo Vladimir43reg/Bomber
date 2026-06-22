@@ -7,13 +7,13 @@ public class MyUtils : ModuleRules
 	public MyUtils(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		CppStandard = CppStandardVersion.Latest;
 		CppCompileWarningSettings.NonInlinedGenCppWarningLevel = WarningLevel.Error;
 
 		PublicDependencyModuleNames.AddRange(new[]
 			{
 				"Core"
 				, "ModelViewViewModel" // Created MVVM base classes
+				, "AsyncMessageSystem" // Created UGlobalMessageSubsystem (Aka Lyra Gameplay Message Router)
 			}
 		);
 
@@ -24,7 +24,7 @@ public class MyUtils : ModuleRules
 				, "MovieScene", "MovieSceneTracks" // UCinematicUtils
 				, "EnhancedInput", "InputCore" // UInputUtilsLibrary
 				, "NavigationSystem", "AIModule" // UAIUtilsLibrary
-				, "GameFeatures" // GameplayUtilsLibrary
+				, "GameplayTags", "GameplayAbilities" // Tags
 			}
 		);
 
@@ -34,6 +34,7 @@ public class MyUtils : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new[]
 				{
 					"MyEditorUtils" // FEditorUtilsLibrary
+					, "UnrealEd" // FEditorDelegates::OnMapOpened
 				}
 			);
 		}

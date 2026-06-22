@@ -16,9 +16,9 @@ class BOMBER_API UBmrMoverTurnGenerator : public ULinearTurnGenerator
 
 public:
 	/** Whether to orient rotation to movement direction */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "C++")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "[Bomber]")
 	bool bOrientRotationToMovement = true;
 
 	/** Is overridden to handle orientation-related movement. */
-	virtual FRotator GetTurn_Implementation(FRotator TargetOrientation, const FMoverTickStartData& FullStartState, const struct FMoverDefaultSyncState& MoverState, const FMoverTimeStep& TimeStep, const FProposedMove& ProposedMove, UMoverBlackboard* SimBlackboard) override;
+	virtual FVector GetTurn_Implementation(FRotator TargetOrientation, const FMoverTickStartData& FullStartState, const struct FMoverDefaultSyncState& MoverState, const FMoverTimeStep& TimeStep, const FProposedMove& ProposedMove, UMoverBlackboard* SimBlackboard) override;
 };

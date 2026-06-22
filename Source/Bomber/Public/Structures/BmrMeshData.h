@@ -5,7 +5,8 @@
 #include "BmrMeshData.generated.h"
 
 /**
- * Is runtime representation of the read-only Level Actor Row (Player, Bomb etc)
+ * Is runtime representation of a Data Registry row for a level actor (Player, Bomb etc).
+ * All visual data (mesh, player tag, etc) is resolved from the RowName via DR lookup
  */
 USTRUCT(BlueprintType)
 struct BOMBER_API FBmrMeshData
@@ -18,26 +19,26 @@ struct BOMBER_API FBmrMeshData
 	/** Default constructor. */
 	FBmrMeshData() = default;
 
-	/** Constructor that initializes the data directly. */
-	FBmrMeshData(const class ULevelActorRow* InRow, int32 InSkinIndex = 0);
-
-	/** The row that is used to visualize the bomber character. */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "C++")
-	TObjectPtr<const class ULevelActorRow> Row = nullptr;
+	/** The Data Registry row name that identifies this level actor's visual data. */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "[Bomber]")
+	FName RowName = NAME_None;
 
 	/** Returns true is data is valid. */
-	FORCEINLINE bool IsValid() const { return Row != nullptr; }
+	FORCEINLINE bool IsValid() const { return !RowName.IsNone(); }
 
 	/** Equality operator to compare the mesh data. */
-	FORCEINLINE bool operator==(const FBmrMeshData& Other) const { return Row == Other.Row && SkinIndex == Other.SkinIndex; }
+	FORCEINLINE bool operator==(const FBmrMeshData& Other) const { return RowName == Other.RowName && SkinRowName == Other.SkinRowName; }
 
 	/*********************************************************************************************
 	 * Skins
 	 ********************************************************************************************* */
 public:
-	/** The index of the texture is currently set, since this data represents the row, where multiple skins can be stored. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "C++")
-	int32 SkinIndex = 0;
+	/** The FBmrPlayerSkinRow row name of the currently applied skin, stable across Data Registry mutations. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "[Bomber]")
+	FName SkinRowName = NAME_None;
+
+	/** Bitmask value where every skin bit is set, meaning all skins are unlocked. */
+	static constexpr int32 AllSkinsAvailableMask = TNumericLimits<int32>::Max();
 
 	/** Bitmask for available skins (up to 32 skins).
 	 * Each bit represents a skin: 0 = locked, 1 = unlocked.
@@ -45,6 +46,6 @@ public:
 	 * 0001 -> Only first skin is unlocked
 	 * 0111 -> First three skins are unlocked
 	 * 1111 -> All skins are unlocked */
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "C++")
-	int32 SkinAvailabilityMask = TNumericLimits<int32>::Max();
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "[Bomber]")
+	int32 SkinAvailabilityMask = AllSkinsAvailableMask;
 };

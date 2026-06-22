@@ -22,4 +22,16 @@ class BOMBER_API UBmrPlayerDeathAbility : public UGameplayAbility
 protected:
 	/** Actually activate ability, do not call this directly. */
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData) override;
+
+	/*********************************************************************************************
+	 * Events
+	 ********************************************************************************************* */
+protected:
+	/** Called once death montage finished, blended out or was interrupted, ends the ability so its Activation Owned Tag no longer lingers across restart. */
+	UFUNCTION(BlueprintNativeEvent, Category = "[Bomber]")
+	void OnDeathMontageFinished();
+
+	/** Called once player row becomes resolvable in Data Registry, plays its death montage. */
+	UFUNCTION(BlueprintNativeEvent, Category = "[Bomber]", meta = (BlueprintProtected))
+	void OnPlayerRowLoaded(const struct FBmrPlayerRow& PlayerRow);
 };

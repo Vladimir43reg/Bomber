@@ -1,0 +1,86 @@
+// Copyright (c) Yevhenii Selivanov
+
+#include "Subsystems/GfpmWorldSubsystem.h"
+
+// GFPM
+#include "GfpmUtils.h"
+
+// UE
+#include "GameFeaturesSubsystem.h"
+
+#include UE_INLINE_GENERATED_CPP_BY_NAME(GfpmWorldSubsystem)
+
+/*********************************************************************************************
+ * INTERNAL: do not override these in child classes, use OnGameFeatureInitialize/OnGameFeatureDeinitialize instead!
+ ********************************************************************************************* */
+
+void UGfpmWorldSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	// Tick is disabled by default, call SetTickableTickType to enable/disable it at runtime
+	SetTickableTickType(ETickableTickType::Never);
+}
+
+// Registers as game feature observer and triggers initial activation if the plugin is already active
+void UGfpmWorldSubsystem::OnWorldBeginPlay(UWorld& InWorld)
+{
+	Super::OnWorldBeginPlay(InWorld);
+
+	UGameFeaturesSubsystem::Get().AddObserver(this, UGameFeaturesSubsystem::EObserverPluginStateUpdateMode::FutureOnly);
+
+	const FName ModuleName = UGfpmUtils::GetModuleNameByObject(this);
+	if (UGfpmUtils::IsGameFeaturePluginActive(ModuleName))
+	{
+		OnGameFeatureInitialize();
+	}
+}
+
+// Triggers deactivation if the plugin is still active and unregisters from game feature observer
+void UGfpmWorldSubsystem::OnWorldEndPlay(UWorld& InWorld)
+{
+	const FName ModuleName = UGfpmUtils::GetModuleNameByObject(this);
+	if (UGfpmUtils::IsGameFeaturePluginActive(ModuleName))
+	{
+		OnGameFeatureDeinitialize();
+	}
+
+	UGameFeaturesSubsystem::Get().RemoveObserver(this);
+
+	Super::OnWorldEndPlay(InWorld);
+}
+
+// Filters activating callbacks to the owning game feature plugin
+void UGfpmWorldSubsystem::OnGameFeatureActivating(const UGameFeatureData* GameFeatureData, const FString& PluginURL)
+{
+	if (!UGfpmUtils::IsInGameFeatureModule(this, GameFeatureData))
+	{
+		return;
+	}
+
+	OnGameFeatureInitialize();
+}
+
+// Filters deactivating callbacks to the owning game feature plugin
+void UGfpmWorldSubsystem::OnGameFeatureDeactivating(const UGameFeatureData* GameFeatureData, FGameFeatureDeactivatingContext& Context, const FString& PluginURL)
+{
+	if (!UGfpmUtils::IsInGameFeatureModule(this, GameFeatureData))
+	{
+		return;
+	}
+
+	OnGameFeatureDeinitialize();
+}
+
+// Overridden to prevent creation outside game feature plugin context
+bool UGfpmWorldSubsystem::ShouldCreateSubsystem(UObject* Outer) const
+{
+	if (!Super::ShouldCreateSubsystem(Outer))
+	{
+		return false;
+	}
+
+	const bool bIsInGameFeature = UGfpmUtils::IsInAnyGameFeatureModule(this);
+	ensureMsgf(bIsInGameFeature, TEXT("ASSERT: [%i] %hs:\n'%s' is not under any registered GameFeatures plugin!"), __LINE__, __FUNCTION__, *GetNameSafe(GetClass()));
+	return bIsInGameFeature;
+}

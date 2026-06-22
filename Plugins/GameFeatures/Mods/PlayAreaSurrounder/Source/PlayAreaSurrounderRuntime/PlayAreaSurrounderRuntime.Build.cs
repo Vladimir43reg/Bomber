@@ -7,19 +7,24 @@ public class PlayAreaSurrounderRuntime : ModuleRules
 	public PlayAreaSurrounderRuntime(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		CppStandard = CppStandardVersion.Latest;
 		CppCompileWarningSettings.NonInlinedGenCppWarningLevel = WarningLevel.Error;
 
 		PublicDependencyModuleNames.AddRange(new[]
 			{
 				"Core"
+				// My modules
+				, "Bomber"
 			}
 		);
 
 		PrivateDependencyModuleNames.AddRange(new[]
 			{
 				"CoreUObject", "Engine", "Slate", "SlateCore" // Core
-				, "Bomber"
+				, "GameplayTags" // FGameplayTag
+				, "GameplayAbilities" // FGameplayEventData
+				// My modules
+				, "DataAssetsLoader" // Created UPlayAreaSurrounderData
+				, "MyUtils" // UGlobalMessageSubsystem
 			}
 		);
 	}

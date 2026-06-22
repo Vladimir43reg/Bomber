@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #pragma once
 
@@ -46,6 +46,15 @@ public:
 	 * Is only valid on the local client, is 0 on the server or in standalone mode. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
 	static float GetPingMs();
+
+	/** Returns player's ping in seconds.
+	 * @param InPawn Pawn to retrieve player state and ping from. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
+	static float GetPlayerPingSeconds(const APawn* InPawn);
+
+	/** Returns true if any local world context is mid-resolving pending net travel, e.g. client connecting to server. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "C++")
+	static bool IsAnyWorldPendingNetTravel();
 };
 
 /**

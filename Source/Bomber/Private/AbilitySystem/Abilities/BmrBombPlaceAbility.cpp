@@ -3,16 +3,19 @@
 #include "AbilitySystem/Abilities/BmrBombPlaceAbility.h"
 
 // Bomber
+#include "Actors/BmrBombAbilityActor.h"
+#include "Actors/BmrGeneratedMap.h"
 #include "Bomber.h"
-#include "Components/MapComponent.h"
-#include "GeneratedMap.h"
-#include "LevelActors/BombActor.h"
+#include "Components/BmrMapComponent.h"
+#include "DataAssets/BmrBombDataAsset.h"
+#include "DataAssets/BmrGameStateDataAsset.h"
+#include "MyUtilsLibraries/MultiplayerUtilsLibrary.h"
 #include "Structures/BmrGameplayTags.h"
-#include "UtilityLibraries/CellsUtilsLibrary.h"
+#include "UtilityLibraries/BmrCellUtilsLibrary.h"
 
 // UE
 #include "AbilitySystemComponent.h"
-#include "DataAssets/BombDataAsset.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerState.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrBombPlaceAbility)
@@ -25,9 +28,9 @@ bool UBmrBombPlaceAbility::ShouldAbilityRespondToEvent(const FGameplayAbilityAct
 		return false;
 	}
 
-	const FCell SpawnCell = TriggerEventData ? UCellsUtilsLibrary::GetCellByIndexOnLevel(TriggerEventData->EventMagnitude) : FCell::InvalidCell;
+	const FBmrCell SpawnCell = TriggerEventData ? UBmrCellUtilsLibrary::GetCellByIndexOnLevel(TriggerEventData->EventMagnitude) : FBmrCell::InvalidCell;
 	if (!ensureMsgf(SpawnCell.IsValid(), TEXT("ASSERT: [%i] %hs:\n'SpawnCell' is not passed to event magnitude, can not spawn bomb!"), __LINE__, __FUNCTION__)
-	    || UCellsUtilsLibrary::IsCellHasAnyMatchingActor(SpawnCell, TO_FLAG(~EAT::Player)))
+	    || UBmrCellUtilsLibrary::IsCellHasAnyMatchingActor(SpawnCell, TO_FLAG(~EAT::Player)))
 	{
 		// Cell is occupied by other level actors (except players), cannot place bomb here
 		return false;
@@ -45,26 +48,26 @@ void UBmrBombPlaceAbility::ActivateAbility(const FGameplayAbilitySpecHandle Hand
 
 	CommitAbility(Handle, ActorInfo, ActivationInfo);
 
-	const FCell SpawnCell = UCellsUtilsLibrary::GetCellByIndexOnLevel(TriggerEventData->EventMagnitude);
+	const FBmrCell SpawnCell = UBmrCellUtilsLibrary::GetCellByIndexOnLevel(TriggerEventData->EventMagnitude);
 
 	// Start bomb timer, providing own cell location in context
 	UAbilitySystemComponent* ASC = ActorInfo->AbilitySystemComponent.Get();
 	FGameplayEffectContextHandle EffectContext = ASC ? ASC->MakeEffectContext() : FGameplayEffectContextHandle();
 	EffectContext.AddOrigin(SpawnCell);
-	ApplyDurationalEffect(UBombDataAsset::Get().GetDurationGameplayEffect(), EffectContext, *ActorInfo, ActivationInfo);
+	ApplyDurationalEffect(UBmrBombDataAsset::Get().GetDurationGameplayEffect(), EffectContext, *ActorInfo, ActivationInfo);
 
 	// Spawn bomb
-	const TFunction<void(UMapComponent&)> OnBombSpawned = [WeakThis = TWeakObjectPtr(this), WeakASK = TWeakObjectPtr(ASC)](const UMapComponent& MapComponent)
+	const TFunction<void(UBmrMapComponent&)> OnBombSpawned = [WeakThis = TWeakObjectPtr(this), WeakASK = TWeakObjectPtr(ASC)](const UBmrMapComponent& MapComponent)
 	{
 		if (UBmrBombPlaceAbility* This = WeakThis.Get())
 		{
-			ABombActor* BombActor = CastChecked<ABombActor>(MapComponent.GetOwner());
+			ABmrBombAbilityActor* BombActor = CastChecked<ABmrBombAbilityActor>(MapComponent.GetOwner());
 			BombActor->InitBomb(WeakASK.Get());
 
 			This->K2_EndAbility();
 		}
 	};
-	AGeneratedMap::Get().SpawnActorByType(EAT::Bomb, SpawnCell, OnBombSpawned);
+	ABmrGeneratedMap::Get().SpawnActorByType(EAT::Bomb, SpawnCell, OnBombSpawned);
 }
 
 // Is overridden to apply cost with set by caller tag for bomb duration
@@ -97,15 +100,14 @@ FActiveGameplayEffectHandle UBmrBombPlaceAbility::ApplyDurationalEffect(const TS
 	}
 
 	// Set duration
-	float BombDuration = UBombDataAsset::Get().GetDuration();
+	float BombDuration = UBmrBombDataAsset::Get().GetDurationTime();
 	if (ActivationInfo.ActivationMode == EGameplayAbilityActivationMode::Authority
 	    && !ActorInfo.IsLocallyControlled())
 	{
 		// Apply lag compensation on server side, so bombs on clients will detonate at the same time as on server
-		const APlayerState* Owner = ASC->GetOwner<APlayerState>();
-		checkf(Owner, TEXT("ERROR: [%i] %hs:\n'Owner' is null!"), __LINE__, __FUNCTION__);
-		constexpr float MaxCompensatedPing = 0.5f; // 500 ms
-		const float PlayerPing = Owner->GetPingInMilliseconds() * 0.001f;
+		const APawn* AvatarPawn = Cast<APawn>(ASC->GetAvatarActor());
+		const float MaxCompensatedPing = UBmrGameStateDataAsset::Get().GetMaxPingCompensationSec();
+		const float PlayerPing = FMath::Min(UMultiplayerUtilsLibrary::GetPlayerPingSeconds(AvatarPawn), MaxCompensatedPing);
 		BombDuration = FMath::Max(MaxCompensatedPing, BombDuration - PlayerPing);
 	}
 	DurationSpec->SetSetByCallerMagnitude(BmrGameplayTags::SetByCaller::Bomb_Duration, BombDuration);

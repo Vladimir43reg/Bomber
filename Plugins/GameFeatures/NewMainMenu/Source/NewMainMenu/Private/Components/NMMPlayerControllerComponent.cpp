@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "Components/NMMPlayerControllerComponent.h"
 
@@ -6,24 +6,28 @@
 #include "Components/NMMSpotComponent.h"
 #include "Data/NMMDataAsset.h"
 #include "Data/NMMSaveGameData.h"
+#include "Data/NmmStateTag.h"
 #include "NMMUtils.h"
-#include "Subsystems/NMMBaseSubsystem.h"
-#include "Subsystems/NMMCameraSubsystem.h"
-#include "Subsystems/NMMSpotsSubsystem.h"
+#include "NmmGameplayTags.h"
 
 // Bomber
-#include "Components/MouseActivityComponent.h"
-#include "Components/MyCameraComponent.h"
-#include "Controllers/MyPlayerController.h"
-#include "DataAssets/MyInputMappingContext.h"
-#include "GameFramework/MyGameStateBase.h"
+#include "Actors/BmrPawn.h"
+#include "Components/BmrCameraComponent.h"
+#include "Components/BmrMouseActivityComponent.h"
+#include "Controllers/BmrPlayerController.h"
+#include "DalSubsystem.h"
+#include "DataAssets/BmrInputMappingContext.h"
+#include "GfpmUtils.h"
+#include "MyUtilsLibraries/InputUtilsLibrary.h"
 #include "MyUtilsLibraries/SaveUtilsLibrary.h"
-#include "Subsystems/GlobalEventsSubsystem.h"
-#include "Subsystems/SoundsSubsystem.h"
-#include "UtilityLibraries/MyBlueprintFunctionLibrary.h"
+#include "Structures/BmrGameStateTag.h"
+#include "Subsystems/BmrWidgetsSubsystem.h"
+#include "Subsystems/GlobalMessageSubsystem.h"
+#include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 
 // UE
-#include "Components/AudioComponent.h"
+#include "GameFramework/PlayerState.h"
+#include "InputAction.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NMMPlayerControllerComponent)
 
@@ -35,14 +39,14 @@ UNMMPlayerControllerComponent::UNMMPlayerControllerComponent()
 }
 
 // Returns Player Controller of this component
-AMyPlayerController* UNMMPlayerControllerComponent::GetPlayerController() const
+ABmrPlayerController* UNMMPlayerControllerComponent::GetPlayerController() const
 {
-	return Cast<AMyPlayerController>(GetOwner());
+	return Cast<ABmrPlayerController>(GetOwner());
 }
 
-AMyPlayerController& UNMMPlayerControllerComponent::GetPlayerControllerChecked() const
+ABmrPlayerController& UNMMPlayerControllerComponent::GetPlayerControllerChecked() const
 {
-	AMyPlayerController* MyPlayerController = GetPlayerController();
+	ABmrPlayerController* MyPlayerController = GetPlayerController();
 	checkf(MyPlayerController, TEXT("%s: 'MyPlayerController' is null"), *FString(__FUNCTION__));
 	return *MyPlayerController;
 }
@@ -55,40 +59,42 @@ AMyPlayerController& UNMMPlayerControllerComponent::GetPlayerControllerChecked()
 void UNMMPlayerControllerComponent::SetSaveGameData(class USaveGame* NewSaveGameData)
 {
 	UNMMSaveGameData* InSaveGameData = Cast<UNMMSaveGameData>(NewSaveGameData);
-	if (!InSaveGameData
-	    || InSaveGameData == SaveGameDataInternal)
+	if (!ensureMsgf(NewSaveGameData, TEXT("ASSERT: [%i] %hs:\n'NewSaveGameData' is not valid!"), __LINE__, __FUNCTION__)
+	    || InSaveGameData == SaveGameData)
 	{
 		return;
 	}
 
-	SaveGameDataInternal = InSaveGameData;
+	SaveGameData = InSaveGameData;
 }
 
 // Enables or disables the input context during Cinematic Main Menu State
 void UNMMPlayerControllerComponent::SetCinematicInputContextEnabled(bool bEnable)
 {
-	AMyPlayerController& MyPC = GetPlayerControllerChecked();
+	ABmrPlayerController& MyPC = GetPlayerControllerChecked();
 
 	if (bEnable)
 	{
-		// Disable all other first
-		MyPC.SetAllInputContextsEnabled(false, ECurrentGameState::Max);
+		// Disable all other first (ParentTag matches all game state contexts)
+		MyPC.SetAllInputContextsEnabled(false, FBmrGameStateTag::ParentTag);
 	}
 
 	// Enable Cinematic inputs
-	MyPC.SetInputContextEnabled(bEnable, UNMMDataAsset::Get().GetInputContext(ENMMState::Cinematic));
+	TArray<UBmrInputMappingContext*> CinematicContexts;
+	UNMMDataAsset::Get().GetInputContexts(FNmmStateTag::Cinematic, /*out*/ CinematicContexts);
+	MyPC.SetAllInputContextEnabled(bEnable, CinematicContexts);
 }
 
 // Enables or disables Cinematic mouse settings from Player Input data asset
 void UNMMPlayerControllerComponent::SetCinematicMouseVisibilityEnabled(bool bEnabled)
 {
-	static const FName CinematicStateName = GET_ENUMERATOR_NAME_CHECKED(ENMMState, Cinematic);
-	UMouseActivityComponent& MouseActivityComponent = GetPlayerControllerChecked().GetMouseActivityComponentChecked();
-	MouseActivityComponent.SetMouseVisibilitySettingsEnabledCustom(bEnabled, CinematicStateName);
+	static const FName CinematicMouseCustom = TEXT("Cinematic");
+	UBmrMouseActivityComponent& MouseActivityComponent = GetPlayerControllerChecked().GetMouseActivityComponentChecked();
+	MouseActivityComponent.SetMouseVisibilitySettingsEnabledCustom(bEnabled, CinematicMouseCustom);
 }
 
 // Enables or disables the input context according to new menu state
-void UNMMPlayerControllerComponent::SetManagedInputContextsEnabled(ENMMState NewState)
+void UNMMPlayerControllerComponent::SetManagedInputContextsEnabled(FNmmStateTag NewMenuState)
 {
 	if (UNMMUtils::GetMainMenuWidget() == nullptr)
 	{
@@ -96,61 +102,23 @@ void UNMMPlayerControllerComponent::SetManagedInputContextsEnabled(ENMMState New
 		return;
 	}
 
-	AMyPlayerController& PC = GetPlayerControllerChecked();
+	ABmrPlayerController& PC = GetPlayerControllerChecked();
 
 	// Remove all previous input contexts managed by Controller
-	TArray<const UMyInputMappingContext*> OutInputContexts;
-	UNMMDataAsset::Get().GetAllInputContexts(/*out*/ OutInputContexts);
-	PC.RemoveInputContexts(OutInputContexts);
+	TArray<UBmrInputMappingContext*> AllContexts;
+	UNMMDataAsset::Get().GetAllInputContexts(/*out*/ AllContexts);
+	PC.RemoveInputContexts(AllContexts);
 
-	// Add Menu context as auto managed by Game State, so it will be enabled everytime the game is in the Menu state
-	const UMyInputMappingContext* InputContext = UNMMDataAsset::Get().GetInputContext(NewState);
-	if (InputContext
-	    && InputContext->GetChosenGameStatesBitmask() > 0)
+	// Add Menu contexts as auto managed by Game State, so they will be enabled everytime the game is in the Menu state
+	TArray<UBmrInputMappingContext*> MatchingContexts;
+	UNMMDataAsset::Get().GetInputContexts(NewMenuState, /*out*/ MatchingContexts);
+	MatchingContexts.RemoveAll([](const UBmrInputMappingContext* It)
 	{
-		PC.SetupInputContexts({InputContext});
-	}
-}
-
-// Tries to set the Menu game state on initializing the Main Menu system
-void UNMMPlayerControllerComponent::TrySetMenuState()
-{
-	if (AMyGameStateBase::GetCurrentGameState() != ECurrentGameState::None)
+		return It->GetActiveForStates().IsEmpty();
+	});
+	if (!MatchingContexts.IsEmpty())
 	{
-		// No need to initialize the Menu state, game state was already set by other systems
-		return;
-	}
-
-	GetPlayerControllerChecked().SetMenuState();
-}
-
-/*********************************************************************************************
- * Sounds
- ********************************************************************************************* */
-
-// Trigger the background music to be played in the Main Menu
-void UNMMPlayerControllerComponent::PlayMainMenuMusic()
-{
-	const ELevelType LevelType = UMyBlueprintFunctionLibrary::GetLevelType();
-	USoundBase* MainMenuMusic = UNMMDataAsset::Get().GetMainMenuMusic(LevelType);
-
-	if (!MainMenuMusic)
-	{
-		// Background music is not found for current state or level, disable current
-		StopMainMenuMusic();
-		return;
-	}
-
-	USoundsSubsystem::Get().PlaySingleSound2D(MainMenuMusic);
-}
-
-// Stops currently played Main Menu background music
-void UNMMPlayerControllerComponent::StopMainMenuMusic()
-{
-	const ELevelType LevelType = UMyBlueprintFunctionLibrary::GetLevelType();
-	if (USoundBase* MainMenuMusic = UNMMDataAsset::Get().GetMainMenuMusic(LevelType))
-	{
-		USoundsSubsystem::Get().StopSingleSound2D(MainMenuMusic);
+		PC.SetupInputContexts(MatchingContexts);
 	}
 }
 
@@ -163,61 +131,54 @@ void UNMMPlayerControllerComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	BIND_ON_GAME_STATE_CHANGED(this, ThisClass::OnGameStateChanged);
+	UDalSubsystem::Get().ListenForDataAsset<UNMMDataAsset>(this, &ThisClass::OnDataAssetLoaded);
 
-	// Listen to set Menu game state once active spot is ready
-	UNMMSpotsSubsystem& SpotsSubsystem = UNMMSpotsSubsystem::Get();
-	if (SpotsSubsystem.IsActiveMenuSpotReady())
-	{
-		OnActiveMenuSpotReady(SpotsSubsystem.GetCurrentSpot());
-	}
-	else
-	{
-		SpotsSubsystem.OnActiveMenuSpotReady.AddUniqueDynamic(this, &ThisClass::OnActiveMenuSpotReady);
-	}
-
-	BIND_ON_MENU_STATE_CHANGED(this, ThisClass::OnNewMainMenuStateChanged);
-
-	// Load save game data of the Main Menu
-	FAsyncLoadGameFromSlot AsyncLoadGameFromSlotDelegate;
-	AsyncLoadGameFromSlotDelegate.BindUObject(this, &ThisClass::OnAsyncLoadGameFromSlotCompleted);
-	USaveUtilsLibrary::AsyncLoadGameFromSlot(this, UNMMSaveGameData::GetSaveSlotName(), UNMMSaveGameData::GetSaveSlotIndex(), AsyncLoadGameFromSlotDelegate);
-
-	// Disable auto camera possess by default, so it can be controlled by the spot
-	UMyCameraComponent* LevelCamera = UMyBlueprintFunctionLibrary::GetLevelCamera();
-	if (ensureMsgf(LevelCamera, TEXT("ASSERT: [%i] %s:\n'EXPR' is not valid, can't disable Auto Camera Possess!"), __LINE__, *FString(__FUNCTION__)))
-	{
-		LevelCamera->SetAutoPossessCameraEnabled(false);
-	}
+	// Clear stale MenuUnloaded from previous session so fresh load does not replay old unload event
+	UGlobalMessageSubsystem::ClearCachedMessages(NmmGameplayTags::Event::MenuUnloaded, this);
 }
 
 // Clears all transient data created by this component
 void UNMMPlayerControllerComponent::OnUnregister()
 {
-	// Remove all input contexts managed by Controller
-	if (const UNMMDataAsset* DataAsset = UNMMUtils::GetDataAsset(this))
-	{
-		TArray<const UMyInputMappingContext*> MenuInputContexts;
-		DataAsset->GetAllInputContexts(/*out*/ MenuInputContexts);
-		GetPlayerControllerChecked().RemoveInputContexts(MenuInputContexts);
+	UGlobalMessageSubsystem::StopListeningForAllGlobalMessages(this);
 
-		// Cleanup all sounds
-		if (USoundsSubsystem* SoundSubsystem = USoundsSubsystem::GetSoundsSubsystem())
+	// Notify that Main Menu is being unloaded before any cleanup
+	ABmrPlayerController* MyPC = GetPlayerController();
+	const ABmrPawn* LocalPawn = MyPC ? MyPC->GetPawn<ABmrPawn>() : nullptr;
+	if (LocalPawn)
+	{
+		FGameplayEventData EventData;
+		EventData.EventTag = NmmGameplayTags::Event::MenuUnloaded;
+		EventData.Instigator = LocalPawn;
+		UGlobalMessageSubsystem::BroadcastGlobalMessage(EventData);
+
+		if (!MyPC->HasAuthority())
 		{
-			TArray<class USoundBase*> AllMainMenuMusic;
-			UNMMDataAsset::Get().GetAllMainMenuMusic(/*out*/ AllMainMenuMusic);
-			for (USoundBase* MainMenuMusic : AllMainMenuMusic)
-			{
-				SoundSubsystem->DestroySingleSound2D(MainMenuMusic);
-			}
+			MyPC->ServerBroadcastMessage(EventData);
 		}
 	}
 
-	// Kill current save game object
-	if (SaveGameDataInternal)
+	if (const UNMMDataAsset* DataAsset = UNMMUtils::GetDataAsset())
 	{
-		SaveGameDataInternal->ConditionalBeginDestroy();
-		SaveGameDataInternal = nullptr;
+		// Unregister all input actions and input contexts
+		TArray<UBmrInputMappingContext*> MenuInputContexts;
+		DataAsset->GetAllInputContexts(/*out*/ MenuInputContexts);
+
+		for (const UBmrInputMappingContext* InputContextIt : MenuInputContexts)
+		{
+			TArray<UInputAction*> ContextInputActions;
+			UInputUtilsLibrary::GetAllActionsInContext(MyPC, InputContextIt, EInputActionInContextState::Any, /*out*/ ContextInputActions);
+			UInputUtilsLibrary::UnbindInputActionsInContext(MyPC, InputContextIt);
+			UGfpmUtils::UnloadAssets(ContextInputActions);
+		}
+		MyPC->RemoveInputContexts(MenuInputContexts);
+	}
+
+	// Kill current save game object
+	if (SaveGameData)
+	{
+		SaveGameData->ConditionalBeginDestroy();
+		SaveGameData = nullptr;
 	}
 
 	Super::OnUnregister();
@@ -227,55 +188,50 @@ void UNMMPlayerControllerComponent::OnUnregister()
  * Events
  ********************************************************************************************* */
 
-// Listen to react when entered the Menu state
-void UNMMPlayerControllerComponent::OnGameStateChanged(ECurrentGameState CurrentGameState)
+// Called when the NMM data asset is loaded and available
+void UNMMPlayerControllerComponent::OnDataAssetLoaded_Implementation(const UNMMDataAsset* DataAsset)
 {
-	switch (CurrentGameState)
+	UGlobalMessageSubsystem::CallOrStartListeningForGlobalMessage(NmmGameplayTags::Event::MenuStateChanged, this, &ThisClass::OnNewMainMenuStateChanged);
+
+	BIND_ON_WIDGETS_INITIALIZED(this, ThisClass::OnWidgetsInitialized);
+
+	// Load save game data of the Main Menu
+	FAsyncLoadGameFromSlot AsyncLoadGameFromSlotDelegate;
+	AsyncLoadGameFromSlotDelegate.BindUObject(this, &ThisClass::OnAsyncLoadGameFromSlotCompleted);
+	USaveUtilsLibrary::AsyncLoadGameFromSlot(this, UNMMSaveGameData::GetSaveSlotName(), UNMMSaveGameData::GetSaveSlotIndex(), AsyncLoadGameFromSlotDelegate);
+
+	// Disable auto camera possess by default, so it can be controlled by the spot
+	UBmrCameraComponent* LevelCamera = UBmrBlueprintFunctionLibrary::GetLevelCamera();
+	if (ensureMsgf(LevelCamera, TEXT("ASSERT: [%i] %s:\n'EXPR' is not valid, can't disable Auto Camera Possess!"), __LINE__, *FString(__FUNCTION__)))
 	{
-		case ECGS::Menu: // Entered the Main Menu
-			PlayMainMenuMusic();
-			break;
-		case ECGS::GameStarting: // Left the Main Menu
-			StopMainMenuMusic();
-			break;
-		default:
-			break;
+		LevelCamera->SetAutoPossessCameraEnabled(false);
 	}
 }
 
-// Called wen the Main Menu state was changed
-void UNMMPlayerControllerComponent::OnNewMainMenuStateChanged_Implementation(ENMMState NewState, ENMMState PreviousState)
+// Called when the Main Menu state was changed
+void UNMMPlayerControllerComponent::OnNewMainMenuStateChanged_Implementation(const FGameplayEventData& Payload)
 {
-	AMyPlayerController& MyPC = GetPlayerControllerChecked();
+	const FNmmStateTag NewState(Payload.InstigatorTags.First());
+	const bool bIsCinematic = NewState == FNmmStateTag::Cinematic;
 
-	switch (NewState)
+	if (bIsCinematic)
 	{
-		case ENMMState::Cinematic:
-			MyPC.SetIgnoreMoveInput(true);
-			StopMainMenuMusic();
-			break;
-		default:
-			break;
+		GetPlayerControllerChecked().SetIgnoreMoveInput(true);
 	}
 
 	// Update input contexts
 	SetManagedInputContextsEnabled(NewState);
 
-	// Update input contexts
-	SetCinematicInputContextEnabled(NewState == ENMMState::Cinematic);
-
-	// Update mouse visibility
-	SetCinematicMouseVisibilityEnabled(NewState == ENMMState::Cinematic);
+	// Update cinematic input and mouse visibility
+	SetCinematicInputContextEnabled(bIsCinematic);
+	SetCinematicMouseVisibilityEnabled(bIsCinematic);
 }
 
-// Is listen to set Menu game state once first spot is ready
-void UNMMPlayerControllerComponent::OnActiveMenuSpotReady_Implementation(UNMMSpotComponent* MainMenuSpotComponent)
+// Is called when all game widgets are initialized
+void UNMMPlayerControllerComponent::OnWidgetsInitialized_Implementation()
 {
-	TrySetMenuState();
-
-	UNMMCameraSubsystem::Get().PossessCamera(ENMMState::Idle);
-
-	UNMMSpotsSubsystem::Get().OnActiveMenuSpotReady.RemoveAll(this);
+	// Apply input contexts that might be skipped earlier if widgets were not ready yet
+	SetManagedInputContextsEnabled(UNMMUtils::GetMainMenuState());
 }
 
 // Is called from AsyncLoadGameFromSlot once Save Game is loaded, or null if it failed to load
@@ -290,5 +246,5 @@ void UNMMPlayerControllerComponent::OnAsyncLoadGameFromSlotCompleted_Implementat
 		// Fallback to cache it
 	}
 
-	SetSaveGameData(SaveGame);
+	SetSaveGameData(InSaveGameData);
 }
