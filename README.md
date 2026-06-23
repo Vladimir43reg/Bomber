@@ -1,19 +1,21 @@
 <a href="https://github.com/JanSeliv/Bomber/blob/main/LICENSE">![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)</a>
 <a href="https://www.unrealengine.com/">![Unreal Engine](https://img.shields.io/badge/Unreal-5.7-dea309?style=flat&logo=unrealengine)</a>
+![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
+![Android](https://img.shields.io/badge/Android_(experimental)-3DDC84?style=flat&logo=android&logoColor=white)
 
 <br/>
 <p align="center">
-<a href="https://github.com/JanSeliv/Bomber">
-</a>
 <h3 align="center">💣 Bomberrage</h3>
 <p align="center">
 <a href="https://discord.gg/jbWgwDefnE"><strong>Join our Discord ››</strong></a>
 <br/>
 <a href="https://store.steampowered.com/app/1873240/Bomberrage/">Steam</a>
 ·
-<a href="https://trello.com/b/1jbKvyeh/bomber-kanban">Board</a>
+<a href="https://trello.com/b/1jbKvyeh/bomber-kanban">Trello</a>
 ·
-<a href="https://bigjangames.website/bomberrage">Website</a>
+<a href="https://docs.google.com/document/d/1Dy2gNEdFfdDeJ3V-Gl8kbPuZu46TQg6wGnW3Tej22SI">Docs</a>
 <br/>
 <br/>
 <img src="https://github.com/user-attachments/assets/835bfb02-76ee-4373-a00b-543a0bde7057" width="1440">
@@ -21,106 +23,62 @@
 
 ## 🌟 About
 
-Bomberrage is an open-source Unreal Engine 5 game available on Steam for Windows, macOS and Linux.
-
-Forget hidden exits and classic rules - Bomberrage is a fast, competitive game where you beat tough AI or friends in explosive multiplayer battles!
+Bomberrage is an open-source Unreal Engine 5 game available on Steam for Windows, macOS and Linux, actively developed since 2019.
 
 ![Bomberrage](https://github.com/user-attachments/assets/e8774b8b-2f76-42f1-8eae-e6849658d2d3)
 
-## Table of Contents
-
-- [💣 About the Bomber Project](#-about-the-bomber-project)
-- [🚀 Getting Started](#-getting-started)
-- [💾 Play the Build](#-play-the-build)
-- [💻 Unreal Project Requirements](#-platforms-and-requirements)
-- [🛠 Key Features](#-key-features)
-- [📋 Kanban Board](#-kanban-board)
-- [📅 Changelog](#-changelog)
-- [🧑‍🤝‍🧑 Credits](#-credits)
-- [📫 Feedback & Contribution](#-feedback--contribution)
-- [📜 License](#-license)
-
 ## 🚀 Getting Started
 
-This project contains **submodules** and requires `--recurse-submodules` when cloning:
-```sh
-git clone --recurse-submodules https://github.com/JanSeliv/Bomber.git
-```
-If already cloned without submodules, you'll find empty folders in `Bomber\Plugins` and error on project startup. To download submodules separately, run:
-```sh
-git submodule update --init --recursive
-```
-
-## 💾 Play the Build
-
-- **Download the latest build on Steam** via [**Download Bomberrage Demo**](https://store.steampowered.com/app/1873240/Bomberrage/):
-
-[![Download on Steam](https://github.com/user-attachments/assets/39bbd233-fc1f-4a16-aec4-f33983a92cd8)](https://store.steampowered.com/app/1873240/Bomberrage/)
-
-- Mirror link: [**GitHub Releases**](https://github.com/JanSeliv/Bomber/releases/)
-
-## 💻 Unreal Project Requirements
-
-- **Unreal Engine 5.7**
-- **Project Size:** ~30GB (build ~3GB)
-
-The project has been tested and launching the editor on the following platforms:
-
-- **Windows 10 22H2**
-- **macOS Sonoma 14.4** (Apple M2 hardware)
-- **Ubuntu 22.04 LTS**
-- **Android 14** (experimental with some issues)
+See the [Getting Started](https://docs.google.com/document/d/1Dy2gNEdFfdDeJ3V-Gl8kbPuZu46TQg6wGnW3Tej22SI/edit?tab=t.0#heading=h.p016an855xg8) on how to download UE project or get the packaged build.
 
 ## 🛠 Key Features
 
-This project could be useful for learners, demonstrating next features:
+You might find this project useful if you are interested in examples of using any of the following Unreal Engine systems:
 
+- Modding via Game Feature Plugins (GFP)
 - Gameplay Ability System (GAS)
-- Mover 2.0
-- Steam multiplayer support for 4 players (via Steam Friends)
+- Mover 2.0 (replaced Character Movement Component)
+- Online Sessions (Steam)
+- Efficient replication: Push Model, Iris and fast arrays
 - State Trees
-- Modern networking: the Push Model and Iris replication
-- Procedurally generated playfield
-- Challenging AI
-- Enhanced Input
-- Mods and Game Feature Plugins (GFP)
-- Complex cinematics (Level Sequences)
-- World Partition
-- Model-View-ViewModel (MVVM) UI Pattern
+- Level Sequences (12 000+ frames | ~7 min)
+- Primary Data Assets | Data Registries (Data Tables)
+- Async Message System (replaced multicast delegates)
+- Model-View-ViewModel (MVVM)
+- External Data Layers (World Partition)
+- Enhanced Input (remapping)
 - Localization
-- Primary Data Assets and Asset Manager
+- _And more..._
 
-Despite this project is fully written in C++, it's extremely **blueprint-friendly**:
+Despite this project is mostly written in C++, it's extremely **blueprint-friendly**:
 
-- **Data-Driven Design**: No hardcoded values. All data can be tweaked via Data Assets, Data Tables and Data Registries in editor as well as accessed in blueprints [[doc](https://trello.com/c/HGscMUdK)].
-- **Fully Exposed**: Every class, property, and function is exposed to Blueprints allowing for heavy changes the logic with no code.
+- **Data-Driven Design**: No hardcoded values. 100% data can be tweaked in editor or via mods (Game Feature Plugins).
+- **Fully Exposed**: Every class, property, and function is exposed to Blueprints allowing for heavy changes with no code.
 - **Well-Commented**: Every class, property and function is well-commented for easy understanding.
-- **Utility Libraries**: Core static functions are accessible globally like Cell Utils [[doc](https://trello.com/c/b2IzcOhg)]. See more in the `Source\UtilityLibraries` [folder](https://github.com/JanSeliv/Bomber/tree/master/Source/Bomber/Public/UtilityLibraries).
 
-Next [plugins](https://github.com/JanSeliv/Bomber/tree/master/Plugins) were developed for this project, but could be useful for other developers:
+## Table of Contents
 
-- [⚙️ Settings Widget Constructor](https://github.com/JanSeliv/SettingsWidgetConstructor)
-- [🔄 Pool Manager](https://github.com/JanSeliv/PoolManager)
-- [🎭 Morphs Player](https://github.com/JanSeliv/MorphsPlayer)
-- [ƒ Function Picker](https://github.com/JanSeliv/FunctionPicker)
-- [\>_ Meta Cheat Manager](https://github.com/JanSeliv/MetaCheatManager)
-- [✂️ Level Sequencer Audio Trimmer](https://github.com/JanSeliv/LevelSequencerAudioTrimmer)
-
-## 📋 Kanban Board
-
-Stay updated with the current progress and plans on the [Trello board](https://trello.com/b/1jbKvyeh/bomber-kanban).
+- [📅 Changelog](#-changelog)
+- [🧑‍🤝‍🧑 Credits](#-credits)
+- [📫 Feedback & Contribution](#-feedback--contribution)
 
 ## 📅 Changelog
-#### `2026-XX-XX:`
+#### `2026-06-23:`
 - Updated to **Unreal Engine 5.7**.
-- Added sprint speed trail VFX when picked up maximum amount of skate powerups by [Kateryna Shchetinina](https://www.artstation.com/kateseliv):
-> <img height="240" src="https://github.com/user-attachments/assets/0ede3ba0-b26b-4cd0-b2d6-4eb4479b2a63">
-- Added arrow indicator above local player during game start:
-> <img height="240" src="https://github.com/user-attachments/assets/c1f2792d-44ff-4337-83c3-db087c73ddd0">
-- Moved from delegates to global tag-event via Async Message System (aka Lyra's Gameplay Message Router)
+- Reduced repo size from ~20 GB to ~100 MB: added Blockout Map with minimal content (full content with Maya Map can be downloaded from [Releases](https://github.com/JanSeliv/Bomber/releases/))
+> <img width="640" src="https://github.com/user-attachments/assets/70058b0b-0ca5-48ca-9079-7426206e383f" />
 - Migrated game state management to **State Trees** for cleaner state transitions
 > <img width="640" src="https://github.com/user-attachments/assets/9879e6df-c923-4b24-8137-a91ee933e537">
-- Utilized Asset Manager for async loading and automatic unloading of primary data assets
+- Added arrow indicator above local player during game start:
+> <img height="240" src="https://github.com/user-attachments/assets/c1f2792d-44ff-4337-83c3-db087c73ddd0">
+- Added sprint speed trail VFX when picked up maximum amount of skate powerups by [Kateryna Shchetinina](https://www.artstation.com/kateseliv):
+> <img height="240" src="https://github.com/user-attachments/assets/0ede3ba0-b26b-4cd0-b2d6-4eb4479b2a63">
+- Moved from multicast delegates to global tag-events via Async Message System plugin (aka Lyra's Gameplay Message Router)
+- Migrated to **Data Assets Loader** plugin to feature modding freedom and automatically async load all assets.
+- Added **mod packaging**: one button cooks any Game Feature Plugin separately, so a feature can be distributed and installed as its own standalone, removable mod.
+- Rebalanced bots across all difficulty levels: Hard now runs previous AI behavior, Medium is friendlier now, on Easy no longer dodge bombs or steal power-ups
+- Rebalanced progression rewards to get more stars by default
+- Remapped gamepad controls to a new layout
  ---
 #### `2025-11-17:`
 - Updated to **Unreal Engine 5.6**.
@@ -252,30 +210,19 @@ Stay updated with the current progress and plans on the [Trello board](https://t
 
 ## 🧑‍🤝‍🧑 Credits
 
-- **Yevhenii Selivanov** - Programming - [GitHub](https://www.github.com/janseliv), [Telegram](https://t.me/JanSeliv)
+- **Yevhenii Selivanov** - Programming - [LinkedIn](https://www.linkedin.com/in/yevhenii-selivanov/), [Discord](https://discord.gg/jbWgwDefnE)
 - **Maksim Shashkov** - Level Design & Level Art - [Artstation](https://www.artstation.com/maksimshashkov)
 - **Kateryna Shchetinina** - Characters & Animations - [Artstation](https://www.artstation.com/kateseliv)
-- **Yevhenii Oksenchuk** - Game Design (Audio, UI, and Cinematics) - [Telegram](https://t.me/ComeThird)
+- **Yevhenii Oksenchuk** - Game Design (Audio, UI, and Cinematics) - [LinkedIn](https://www.linkedin.com/in/yevhenii-oksenchuk-358b99292/)
 - **Valeriy Rotermel** - [Progression System](https://github.com/moinm3uw/ProgressionSystem) - [GitHub](https://github.com/moinm3uw)
 - **Anton Selivanov** - Foot Trails | Play Area Surrounder - [GitHub](https://github.com/antokior)
-
-Special thanks to the following companies for providing their licenses to support our open source development:
-
-- [JetBrains Rider](https://www.jetbrains.com/community/opensource/#support) - cross-platform .NET IDE.
-- [PVS-Studio](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
 
 ## 📫 Feedback & Contribution
 
 Feedback and contributions from the community are highly appreciated!
 
-- **Tasks:** Check our [Google Sheets Tasks List](https://docs.google.com/spreadsheets/d/1BaElMO0IDiV7im5FNk19ewWBXH1vpg3-1TjiEX55Kw8/edit#gid=554015394) and [Bugs Backlog on Trello](https://trello.com/b/1jbKvyeh/bomber-kanban). Unassigned tasks and bugs are open for contribution.
+- **Tasks:** Check our [Trello](https://trello.com/b/1jbKvyeh/bomber-kanban) - unassigned tasks and bugs are open for contribution.
 - **Report & Suggest:** Found a bug or have a feature idea? Open an issue.
 - **Fork & Pull:** Fork the project, make your changes, and submit a pull request to the `develop` branch.
 - **Standards:** Adhere to the [Unreal Engine Coding Standards](https://dev.epicgames.com/documentation/en-us/unreal-engine/epic-cplusplus-coding-standard-for-unreal-engine) and [Naming Standards](https://github.com/Allar/ue5-style-guide) when contributing.
 - **Blueprints & Assets:** If contributing blueprint logic or assets, attach screenshots to show what has changed.
-
-## 📜 License
-
-This project is licensed under the terms of the MIT license. See [LICENSE](LICENSE) for more details.
-
-We hope you find this project useful and we look forward to your feedback and contributions.
