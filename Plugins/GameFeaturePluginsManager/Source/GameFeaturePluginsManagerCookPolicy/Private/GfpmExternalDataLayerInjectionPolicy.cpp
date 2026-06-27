@@ -42,7 +42,7 @@ public:
 		}
 
 		// Engine settings classes load after this early phase, defer key validation so engine rename surfaces as warning here instead of silent dead-key write
-		PostEngineInitHandle = FCoreDelegates::OnPostEngineInit.AddLambda([]
+		PostEngineInitHandle = FCoreDelegates::GetOnPostEngineInit().AddLambda([]
 		{
 			ValidateConfigKey(EdlSubsystemSection, InjectionPolicyKey);
 			ValidateConfigKey(EditorExperimentalSection, ExternalDataLayersKey);
@@ -51,7 +51,7 @@ public:
 
 	virtual void ShutdownModule() override
 	{
-		FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+		FCoreDelegates::GetOnPostEngineInit().Remove(PostEngineInitHandle);
 	}
 
 private:

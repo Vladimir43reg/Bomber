@@ -169,7 +169,7 @@ void UBmrSoundsSubsystem::DestroyAllSoundComponents()
 	if (Level)
 	{
 		TArray<UObject*> FoundObjects;
-		GetObjectsWithOuter(Level, FoundObjects, false, RF_NoFlags, EInternalObjectFlags::None);
+		GetObjectsWithOuter(Level, FoundObjects, EGetObjectsFlags::None, RF_NoFlags, EInternalObjectFlags::None);
 		for (UObject* ObjectIt : FoundObjects)
 		{
 			if (IsValid(ObjectIt)

@@ -28,10 +28,10 @@ void UGfpmAction_AddWorldPartitionContent::OnGameFeatureRegistering()
 }
 
 // Called by the Game Features system when the owning feature transitions to Active
-void UGfpmAction_AddWorldPartitionContent::OnGameFeatureActivating()
+void UGfpmAction_AddWorldPartitionContent::OnGameFeatureActivating(FGameFeatureActivatingContext& Context)
 {
 #if !WITH_EDITOR
-	Super::OnGameFeatureActivating();
+	Super::OnGameFeatureActivating(Context);
 #endif // !WITH_EDITOR
 	// Editor builds drive External Data Layer injection separately for runtime map switching, so the engine default is intentionally suppressed there
 }

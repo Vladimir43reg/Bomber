@@ -19,7 +19,7 @@ protected:
 	virtual void OnGameFeatureRegistering() override;
 
 	/** Called by the Game Features system when the owning feature transitions to Active. */
-	virtual void OnGameFeatureActivating() override;
+	virtual void OnGameFeatureActivating(FGameFeatureActivatingContext& Context) override;
 
 	/** Called by the Game Features system when the owning feature is leaving the Active state. */
 	virtual void OnGameFeatureDeactivating(FGameFeatureDeactivatingContext& Context) override;

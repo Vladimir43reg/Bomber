@@ -12,9 +12,9 @@
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrMoverWalkingMode)
 
 // Called when the mode is registered, initializes cached settings
-void UBmrMoverWalkingMode::OnRegistered(const FName ModeName)
+void UBmrMoverWalkingMode::OnRegistered(const FName ModeName, const FMoverSimContext& SimContext)
 {
-	Super::OnRegistered(ModeName);
+	Super::OnRegistered(ModeName, SimContext);
 
 	const UMoverComponent* MoverComponent = GetMoverComponent();
 	checkf(MoverComponent, TEXT("ERROR: [%i] %hs:\n'MoverComponent' is null!"), __LINE__, __FUNCTION__);
@@ -24,7 +24,7 @@ void UBmrMoverWalkingMode::OnRegistered(const FName ModeName)
 }
 
 // Is overridden to handle walking-related movement
-void UBmrMoverWalkingMode::GenerateMove_Implementation(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove) const
+void UBmrMoverWalkingMode::GenerateMove_Implementation(const FMoverSimContext& SimContext, const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove) const
 {
 	// We need to modify MaxSpeed before calling Super because:
 	// 1. Base class uses UCommonLegacyMovementSettings::MaxSpeed in multiple places (Params.MaxSpeed, friction logic, etc.)
@@ -37,7 +37,7 @@ void UBmrMoverWalkingMode::GenerateMove_Implementation(const FMoverTickStartData
 	const float OriginalMaxSpeed = MutableLegacySettings->MaxSpeed;
 	MutableLegacySettings->MaxSpeed += BonusSpeed;
 
-	Super::GenerateMove_Implementation(StartState, TimeStep, OutProposedMove);
+	Super::GenerateMove_Implementation(SimContext, StartState, TimeStep, OutProposedMove);
 
 	// Restore original max speed after Super call
 	MutableLegacySettings->MaxSpeed = OriginalMaxSpeed;

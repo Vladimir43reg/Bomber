@@ -37,8 +37,8 @@ protected:
 	 ********************************************************************************************* */
 protected:
 	/** Called when the mode is registered, initializes cached settings. */
-	virtual void OnRegistered(const FName ModeName) override;
+	virtual void OnRegistered(const FName ModeName, const FMoverSimContext& SimContext) override;
 
 	/** Is overridden to handle walking-related movement. */
-	virtual void GenerateMove_Implementation(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove) const override;
+	virtual void GenerateMove_Implementation(const FMoverSimContext& SimContext, const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove) const override;
 };

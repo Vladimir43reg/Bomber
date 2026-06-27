@@ -1,5 +1,5 @@
 <a href="https://github.com/JanSeliv/DataAssetsLoader/blob/main/LICENSE">![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)</a>
-<a href="https://www.unrealengine.com/">![Unreal Engine](https://img.shields.io/badge/Unreal-5.7-dea309?style=flat&logo=unrealengine)</a>
+<a href="https://www.unrealengine.com/">![Unreal Engine](https://img.shields.io/badge/Unreal-5.8-dea309?style=flat&logo=unrealengine)</a>
 
 <br/>
 <p align="center">
@@ -43,7 +43,7 @@ Explore this [game project repository](https://github.com/JanSeliv/Bomber) to vi
 
 ## 📅 Changelog
 #### 2026-XX-XX
-- [Editor] Listen node now has a Failed exec output that fires when the data asset unable to load
+- Updated to **Unreal Engine 5.8**.
 #### 2026-02-23
 - 🎉 Initial public release on Unreal Engine 5.7
 

@@ -25,5 +25,5 @@ protected:
 	virtual UObject* CreateInstance(const UClass* ExpectedType, const UUserWidget* UserWidget, const UMVVMView* View) const override;
 
 	/** Is called to destroy the instance of the ViewModel. */
-	virtual void DestroyInstance(const UObject* ViewModel, const UMVVMView* View) const override;
+	virtual void DestroyInstance(UObject* ViewModel, const UMVVMView* View) const override;
 };

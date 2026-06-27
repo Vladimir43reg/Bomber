@@ -378,7 +378,7 @@ void UGfpmUtils::UnloadAsset(UObject* AssetToUnload, bool bUnloadReferences /* =
 	const FString ModuleMount = FString::Printf(TEXT("/%s/"), *GetModuleNameByAsset(AssetToUnload).ToString());
 
 	AssetToUnload->ClearFlags(RF_Standalone);
-	AssetToUnload->Rename(nullptr, GetTransientPackage(), REN_ForceNoResetLoaders | REN_DoNotDirty | REN_DontCreateRedirectors | REN_NonTransactional);
+	AssetToUnload->Rename(nullptr, GetTransientPackage(), REN_DoNotDirty | REN_DontCreateRedirectors | REN_NonTransactional);
 
 	if (bUnloadReferences)
 	{

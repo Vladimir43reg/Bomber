@@ -62,7 +62,7 @@ UObject* UMVVMMyContextResolver::CreateInstance(const UClass* ExpectedType, cons
 }
 
 // Is called to destroy the instance of the ViewModel
-void UMVVMMyContextResolver::DestroyInstance(const UObject* ViewModel, const UMVVMView* View) const
+void UMVVMMyContextResolver::DestroyInstance(UObject* ViewModel, const UMVVMView* View) const
 {
 	UMVVM_MyBaseViewModel* MyBaseViewModel = const_cast<UMVVM_MyBaseViewModel*>(Cast<UMVVM_MyBaseViewModel>(ViewModel));
 	if (!ensureMsgf(MyBaseViewModel, TEXT("ASSERT: [%i] %s:\n'MyBaseViewModel' is nullptr"), __LINE__, *FString(__FUNCTION__))

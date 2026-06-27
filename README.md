@@ -1,5 +1,5 @@
 <a href="https://github.com/JanSeliv/Bomber/blob/main/LICENSE">![License](https://img.shields.io/badge/license-MIT-brightgreen.svg)</a>
-<a href="https://www.unrealengine.com/">![Unreal Engine](https://img.shields.io/badge/Unreal-5.7-dea309?style=flat&logo=unrealengine)</a>
+<a href="https://www.unrealengine.com/">![Unreal Engine](https://img.shields.io/badge/Unreal-5.8-dea309?style=flat&logo=unrealengine)</a>
 ![Windows](https://img.shields.io/badge/Windows-0078D6?style=flat&logo=windows&logoColor=white)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
@@ -63,6 +63,8 @@ Despite this project is mostly written in C++, it's extremely **blueprint-friend
 - [📫 Feedback & Contribution](#-feedback--contribution)
 
 ## 📅 Changelog
+#### `2026-XX-XX:`
+- Updated to **Unreal Engine 5.8**.
 #### `2026-06-23:`
 - Updated to **Unreal Engine 5.7**.
 - Reduced repo size from ~20 GB to ~100 MB: added Blockout Map with minimal content (full content with Maya Map can be downloaded from [Releases](https://github.com/JanSeliv/Bomber/releases/))
