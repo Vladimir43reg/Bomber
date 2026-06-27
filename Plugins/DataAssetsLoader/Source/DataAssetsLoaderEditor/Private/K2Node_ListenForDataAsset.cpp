@@ -87,7 +87,7 @@ void UK2Node_ListenForDataAsset::OnClassPinChanged() const
 	}
 
 	GetGraph()->NotifyGraphChanged();
-	FBlueprintEditorUtils::MarkBlueprintAsModified(GetBlueprint());
+	FBlueprintEditorUtils::MarkBlueprintAsModified(GetBlueprintChecked());
 }
 
 // UEdGraphNode interface
