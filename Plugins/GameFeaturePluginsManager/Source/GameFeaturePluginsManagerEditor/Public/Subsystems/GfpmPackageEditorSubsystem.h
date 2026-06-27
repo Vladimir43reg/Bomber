@@ -39,13 +39,17 @@ protected:
 	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "[Game Feature Plugins Manager Editor]", meta = (BlueprintProtected))
 	FString ProjectReleaseVersion;
 
-	/** Static cook arguments shared by every mod cook, override per project pipeline. */
+	/** Cook arguments for one mod DLC, override per project pipeline. */
 	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "[Game Feature Plugins Manager Editor]", meta = (BlueprintProtected))
-	FString ModCookArguments;
+	FString CookModArguments;
 
-	/** Cook arguments full project build uses to package without game features, override per project pipeline. */
+	/** Cook arguments for full project package excluding game features, override per project pipeline. */
 	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "[Game Feature Plugins Manager Editor]", meta = (BlueprintProtected))
-	FString ProjectCookArguments;
+	FString CookProjectAllArguments;
+
+	/** Cook arguments for minimal project cook (no -build, no stage) emitting release for mod, override per project pipeline. */
+	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "[Game Feature Plugins Manager Editor]", meta = (BlueprintProtected))
+	FString CookProjectMinimalArguments;
 
 	/** Extra cooker options appended to engine additional cooker args, override per project pipeline. */
 	UPROPERTY(Config, EditDefaultsOnly, BlueprintReadOnly, Category = "[Game Feature Plugins Manager Editor]", meta = (BlueprintProtected))
@@ -55,18 +59,21 @@ private:
 	/** Opens desktop folder picker with given dialog title, empty when developer cancels. Not exposed: editor desktop dialog. */
 	FString PromptBuildDir(const FString& DialogTitle) const;
 
-	/** Launches out-of-process cook of one plugin into build, runs continuation after install. Not exposed: TFunction continuation. */
-	void LaunchModPackage(FName GameFeatureName, const FString& BuildPath, TFunction<void()> OnComplete);
+	/** Cooks one plugin as mod DLC into build, runs continuation after install. Not exposed: TFunction continuation. */
+	void CookMod(FName GameFeatureName, const FString& BuildPath, TFunction<void()> OnComplete);
 
-	/** Packages modular project without game features into build path, runs continuation after it succeeds. Not exposed: TFunction continuation. */
-	void LaunchProjectPackage(const FString& BuildPath, TFunction<void()> OnComplete);
+	/** Cooks full project excluding game features into build path, runs continuation after it succeeds. Not exposed: TFunction continuation. */
+	void CookProjectAll(const FString& BuildPath, TFunction<void()> OnComplete);
 
-	/** Packages queue head into build then recurses on completion, so plugins package one after another. Not exposed: private recursive implementation, covered by public BP wrapper. */
-	void PackageModQueue(const TArray<FName>& Queue, const FString& BuildPath);
+	/** Cooks minimal project (game features excluded, no -build, no stage) so mod cook has release to cook against, runs continuation after it succeeds. Not exposed: TFunction continuation. */
+	void CookProjectMinimal(TFunction<void()> OnComplete);
 
-	/** Installs cooked mod into build then drives queue continuation, runs on game thread after package task completes. Not exposed: TFunction continuation. */
-	void HandlePackageFinished(const FString& Result, FName GameFeatureName, const FString& ArchiveDir, const FString& TargetPaksDir, const FString& CookedPlatform, const TFunction<void()>& OnComplete);
+	/** Cooks queue head into build then recurses on completion, so plugins cook one after another. Not exposed: private recursive implementation, covered by public BP wrapper. */
+	void CookModQueue(const TArray<FName>& Queue, const FString& BuildPath);
 
-	/** Drives queue continuation once project package succeeds, runs on game thread after package task completes. Not exposed: TFunction continuation. */
-	void HandleProjectPackageFinished(const FString& Result, const TFunction<void()>& OnComplete);
+	/** Installs cooked mod into build then drives queue continuation, runs on game thread after mod cook task completes. Not exposed: TFunction continuation. */
+	void HandleCookModFinished(const FString& Result, FName GameFeatureName, const FString& ArchiveDir, const FString& TargetPaksDir, const FString& CookedPlatform, const TFunction<void()>& OnComplete);
+
+	/** Drives queue continuation once project cook succeeds, runs on game thread after project cook task completes. Not exposed: TFunction continuation. */
+	void HandleCookProjectAllFinished(const FString& Result, const TFunction<void()>& OnComplete);
 };

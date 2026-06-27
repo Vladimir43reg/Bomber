@@ -7,9 +7,6 @@
 #include "GfpmUtils.h"
 
 // UE
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/AssetRegistryState.h"
-#include "AssetRegistry/IAssetRegistry.h"
 #include "Async/Async.h"
 #include "DesktopPlatformModule.h"
 #include "Framework/Application/SlateApplication.h"
@@ -82,43 +79,11 @@ namespace GfpmPackageEditorInternal
 		return Target;
 	}
 
-	// Returns base release AssetRegistry mod cook diffs against, file project package emits via createreleaseversion
-	static FString GetBaseReleaseAssetRegistryPath(const FString& ReleaseVersion, const FString& Configuration, const FString& CookedPlatform)
+	// Returns release registry path mod cooks against, written by project cook via createreleaseversion
+	static FString GetReleaseRegistryPath(const FString& ReleaseVersion, const FString& Configuration, const FString& CookedPlatform)
 	{
 		const FString ReleaseName = FString::Printf(TEXT("%s_%s"), *ReleaseVersion, *Configuration);
 		return FPaths::Combine(FPaths::ProjectDir(), TEXT("Releases"), ReleaseName, CookedPlatform, TEXT("AssetRegistry.bin"));
-	}
-
-	// Writes based-on Asset Registry for mod cook, derived from editor Asset Registry minus mod's own packages so cook excludes base content
-	static bool GenerateBaseReleaseRegistry(FName GameFeatureName, const FString& OutPath)
-	{
-		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-		AssetRegistry.WaitForCompletion();
-
-		TArray<FAssetData> ModAssets;
-		AssetRegistry.GetAssetsByPath(FName(*FString::Printf(TEXT("/%s"), *GameFeatureName.ToString())), ModAssets, /*bRecursive*/ true, /*bIncludeOnlyOnDiskAssets*/ false);
-		TSet<FName> ModPackages;
-		for (const FAssetData& ModAsset : ModAssets)
-		{
-			ModPackages.Add(ModAsset.PackageName);
-		}
-
-		const FAssetRegistrySerializationOptions Options(UE::AssetRegistry::ESerializationTarget::ForDevelopment);
-		FAssetRegistryState BaseState;
-		AssetRegistry.InitializeTemporaryAssetRegistryState(BaseState, Options, /*bRefreshExisting*/ false, TSet<FName>(), ModPackages);
-
-		IFileManager& FileManager = IFileManager::Get();
-		FileManager.MakeDirectory(*FPaths::GetPath(OutPath), /*Tree*/ true);
-		const TUniquePtr<FArchive> Writer(FileManager.CreateFileWriter(*OutPath));
-		if (!Writer)
-		{
-			// Output path not writable
-			return false;
-		}
-
-		const bool bSaved = BaseState.Serialize(*Writer, Options);
-		Writer->Close();
-		return bSaved;
 	}
 
 	// Returns global Content/Paks dir of build found at or under picked path, empty when none
@@ -193,7 +158,7 @@ void UGfpmPackageEditorSubsystem::PackageGameFeatureIntoBuild(FName GameFeatureN
 		return;
 	}
 
-	LaunchModPackage(GameFeatureName, BuildPath, nullptr);
+	CookMod(GameFeatureName, BuildPath, nullptr);
 }
 
 // Packages every registered plugin as separate mod and installs them into build at given path
@@ -212,13 +177,13 @@ void UGfpmPackageEditorSubsystem::PackageAllGameFeaturesIntoBuild(const FString&
 		PackageQueue.Add(FName(*PluginName));
 	}
 
-	// Package modular project without game features first, then package every plugin as mod into its Content/Paks
+	// Cook full project without game features first, then cook every plugin as mod into its Content/Paks
 	const TWeakObjectPtr<UGfpmPackageEditorSubsystem> WeakThis(this);
-	LaunchProjectPackage(BuildPath, [WeakThis, PackageQueue = MoveTemp(PackageQueue), BuildPath]()
+	CookProjectAll(BuildPath, [WeakThis, PackageQueue = MoveTemp(PackageQueue), BuildPath]()
 	{
 		if (WeakThis.IsValid())
 		{
-			WeakThis->PackageModQueue(PackageQueue, BuildPath);
+			WeakThis->CookModQueue(PackageQueue, BuildPath);
 		}
 	});
 }
@@ -264,19 +229,25 @@ FString UGfpmPackageEditorSubsystem::PromptBuildDir(const FString& DialogTitle) 
 	return PickedPath;
 }
 
-// Launches out-of-process cook of one plugin into build, runs continuation after install
-void UGfpmPackageEditorSubsystem::LaunchModPackage(FName GameFeatureName, const FString& BuildPath, TFunction<void()> OnComplete)
+// Cooks one plugin as mod DLC into build, runs continuation after install
+void UGfpmPackageEditorSubsystem::CookMod(FName GameFeatureName, const FString& BuildPath, TFunction<void()> OnComplete)
 {
 	const GfpmPackageEditorInternal::FPackageTarget Target = GfpmPackageEditorInternal::ResolvePackageTarget();
 
-	const FString BaseRegistryPath = GfpmPackageEditorInternal::GetBaseReleaseAssetRegistryPath(ProjectReleaseVersion, Target.Configuration, Target.CookedPlatform);
-	if (!FPaths::FileExists(BaseRegistryPath))
+	const FString ReleaseRegistryPath = GfpmPackageEditorInternal::GetReleaseRegistryPath(ProjectReleaseVersion, Target.Configuration, Target.CookedPlatform);
+	if (!FPaths::FileExists(ReleaseRegistryPath))
 	{
-		const bool bGenerated = GfpmPackageEditorInternal::GenerateBaseReleaseRegistry(GameFeatureName, BaseRegistryPath);
-		if (!ensureMsgf(bGenerated, TEXT("ASSERT: [%i] %hs:\nFailed to write base release registry at '%s'"), __LINE__, __FUNCTION__, *BaseRegistryPath))
+		// External Data Layer cell binds to host world's COOKED exports, so mod must cook against cooked release, never editor's uncooked one which leaves those host-world imports null at runtime
+		CookProjectMinimal([WeakThis = TWeakObjectPtr(this), GameFeatureName, BuildPath, OnComplete, ReleaseRegistryPath]()
 		{
-			return;
-		}
+			const UGfpmPackageEditorSubsystem* This = WeakThis.Get();
+			if (This
+			    && ensureMsgf(FPaths::FileExists(ReleaseRegistryPath), TEXT("ASSERT: [%i] %hs:\nMinimal project cook produced no release registry at '%s'"), __LINE__, __FUNCTION__, *ReleaseRegistryPath))
+			{
+				WeakThis->CookMod(GameFeatureName, BuildPath, OnComplete);
+			}
+		});
+		return;
 	}
 
 	// Install into build's Content/Paks when picked path is one, otherwise use picked folder directly so mod ships standalone
@@ -308,12 +279,12 @@ void UGfpmPackageEditorSubsystem::LaunchModPackage(FName GameFeatureName, const 
 		ArchitectureArg = FString::Printf(TEXT("-clientarchitecture=%s "), *Target.Architecture);
 	}
 
-	// Mod cook bases on same release LaunchProjectPackage emits (ProjectReleaseVersion_Configuration order), so mod excludes only real project content, never another release
+	// Mod cook cooks against same release CookProjectAll emits (ProjectReleaseVersion_Configuration order), so mod excludes only real project content, never another release
 	const FString CommandLine = FString::Printf(
 	    TEXT("BuildCookRun -project=\"%s\" -platform=%s %s-clientconfig=%s -target=%s %s ")
 	        TEXT("-stagingdirectory=\"%s\" -archivedirectory=\"%s\" ")
 	            TEXT("-DLCName=%s -basedonreleaseversion=%s_%s -AdditionalCookerOptions=\"%s\""),
-	    *FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), *Target.Platform, *ArchitectureArg, *Target.Configuration, FApp::GetProjectName(), *ModCookArguments,
+	    *FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), *Target.Platform, *ArchitectureArg, *Target.Configuration, FApp::GetProjectName(), *CookModArguments,
 	    *StagingDir, *ArchiveDir,
 	    *ModName, *ProjectReleaseVersion, *Target.Configuration, *CookerOptions);
 
@@ -330,14 +301,14 @@ void UGfpmPackageEditorSubsystem::LaunchModPackage(FName GameFeatureName, const 
 		{
 			if (WeakThis.IsValid())
 			{
-				WeakThis->HandlePackageFinished(Result, FName(*ModName), ArchiveDir, TargetPaksDir, CookedPlatform, OnComplete);
+				WeakThis->HandleCookModFinished(Result, FName(*ModName), ArchiveDir, TargetPaksDir, CookedPlatform, OnComplete);
 			}
 		});
 	});
 }
 
-// Packages modular project without game features into build path, runs continuation after it succeeds
-void UGfpmPackageEditorSubsystem::LaunchProjectPackage(const FString& BuildPath, TFunction<void()> OnComplete)
+// Cooks full project excluding game features into build path, runs continuation after it succeeds
+void UGfpmPackageEditorSubsystem::CookProjectAll(const FString& BuildPath, TFunction<void()> OnComplete)
 {
 	const GfpmPackageEditorInternal::FPackageTarget Target = GfpmPackageEditorInternal::ResolvePackageTarget();
 
@@ -352,7 +323,7 @@ void UGfpmPackageEditorSubsystem::LaunchProjectPackage(const FString& BuildPath,
 	const FString CommandLine = FString::Printf(
 	    TEXT("BuildCookRun -project=\"%s\" -platform=%s %s-clientconfig=%s -target=%s %s ")
 	        TEXT("-archivedirectory=\"%s\" -createreleaseversion=%s_%s -AdditionalCookerOptions=\"-GfpmExcludeGameFeatures\""),
-	    *FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), *Target.Platform, *ArchitectureArg, *Target.Configuration, FApp::GetProjectName(), *ProjectCookArguments,
+	    *FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), *Target.Platform, *ArchitectureArg, *Target.Configuration, FApp::GetProjectName(), *CookProjectAllArguments,
 	    *BuildPath, *ProjectReleaseVersion, *Target.Configuration);
 
 	const TWeakObjectPtr<UGfpmPackageEditorSubsystem> WeakThis(this);
@@ -366,14 +337,55 @@ void UGfpmPackageEditorSubsystem::LaunchProjectPackage(const FString& BuildPath,
 		{
 			if (WeakThis.IsValid())
 			{
-				WeakThis->HandleProjectPackageFinished(Result, OnComplete);
+				WeakThis->HandleCookProjectAllFinished(Result, OnComplete);
 			}
 		});
 	});
 }
 
-// Packages queue head into build then recurses on completion, so plugins package one after another
-void UGfpmPackageEditorSubsystem::PackageModQueue(const TArray<FName>& Queue, const FString& BuildPath)
+// Cooks minimal project (game features excluded, no -build, no stage) so mod cook has release to cook against, runs continuation after it succeeds
+void UGfpmPackageEditorSubsystem::CookProjectMinimal(TFunction<void()> OnComplete)
+{
+	const GfpmPackageEditorInternal::FPackageTarget Target = GfpmPackageEditorInternal::ResolvePackageTarget();
+
+	FString ArchitectureArg;
+	if (!Target.Architecture.IsEmpty())
+	{
+		ArchitectureArg = FString::Printf(TEXT("-clientarchitecture=%s "), *Target.Architecture);
+	}
+
+	// Minimal cook: configured args skip -build and stage (content-only modder has no toolchain nor staged binaries),
+	// -createreleaseversion still writes release for mod cook
+	const FString CommandLine = FString::Printf(
+	    TEXT("BuildCookRun -project=\"%s\" -platform=%s %s-clientconfig=%s -target=%s %s ")
+	        TEXT("-createreleaseversion=%s_%s -AdditionalCookerOptions=\"-GfpmExcludeGameFeatures\""),
+	    *FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath()), *Target.Platform, *ArchitectureArg, *Target.Configuration, FApp::GetProjectName(), *CookProjectMinimalArguments,
+	    *ProjectReleaseVersion, *Target.Configuration);
+
+	const FText TaskName = FText::FromString(TEXT("Cooking minimal project for mod"));
+	IUATHelperModule::Get().CreateUatTask(CommandLine, FText::FromString(GfpmPackageEditorInternal::DescribeTarget(Target)), TaskName,
+	    TaskName, nullptr, nullptr,
+	    [OnComplete](FString Result, double)
+	{
+		if (Result != TEXT("Completed"))
+		{
+			// Minimal project cook failed, do not chain mod cook against missing or partial release
+			return;
+		}
+
+		// UAT completion fires on background thread, finish on game thread so chained mod cook task creates its Slate notification there
+		AsyncTask(ENamedThreads::GameThread, [OnComplete]()
+		{
+			if (OnComplete)
+			{
+				OnComplete();
+			}
+		});
+	});
+}
+
+// Cooks queue head into build then recurses on completion, so plugins cook one after another
+void UGfpmPackageEditorSubsystem::CookModQueue(const TArray<FName>& Queue, const FString& BuildPath)
 {
 	TArray<FName> MutableQueue = Queue;
 	if (MutableQueue.IsEmpty())
@@ -385,18 +397,17 @@ void UGfpmPackageEditorSubsystem::PackageModQueue(const TArray<FName>& Queue, co
 	const FName NextPlugin = MutableQueue[0];
 	MutableQueue.RemoveAt(0);
 
-	const TWeakObjectPtr<UGfpmPackageEditorSubsystem> WeakThis(this);
-	LaunchModPackage(NextPlugin, BuildPath, [WeakThis, MutableQueue, BuildPath]()
+	CookMod(NextPlugin, BuildPath, [WeakThis = TWeakObjectPtr(this), MutableQueue, BuildPath]()
 	{
-		if (WeakThis.IsValid())
+		if (UGfpmPackageEditorSubsystem* This = WeakThis.Get())
 		{
-			WeakThis->PackageModQueue(MutableQueue, BuildPath);
+			This->CookModQueue(MutableQueue, BuildPath);
 		}
 	});
 }
 
-// Installs cooked mod into build then drives queue continuation, runs on game thread after package task completes
-void UGfpmPackageEditorSubsystem::HandlePackageFinished(const FString& Result, FName GameFeatureName, const FString& ArchiveDir, const FString& TargetPaksDir, const FString& CookedPlatform, const TFunction<void()>& OnComplete)
+// Installs cooked mod into build then drives queue continuation, runs on game thread after mod cook task completes
+void UGfpmPackageEditorSubsystem::HandleCookModFinished(const FString& Result, FName GameFeatureName, const FString& ArchiveDir, const FString& TargetPaksDir, const FString& CookedPlatform, const TFunction<void()>& OnComplete)
 {
 	if (Result == TEXT("Completed"))
 	{
@@ -410,12 +421,12 @@ void UGfpmPackageEditorSubsystem::HandlePackageFinished(const FString& Result, F
 	}
 }
 
-// Drives queue continuation once project package succeeds, runs on game thread after package task completes
-void UGfpmPackageEditorSubsystem::HandleProjectPackageFinished(const FString& Result, const TFunction<void()>& OnComplete)
+// Drives queue continuation once project cook succeeds, runs on game thread after project cook task completes
+void UGfpmPackageEditorSubsystem::HandleCookProjectAllFinished(const FString& Result, const TFunction<void()>& OnComplete)
 {
 	if (Result != TEXT("Completed"))
 	{
-		// Project package failed, do not cook mods into incomplete build
+		// Project cook failed, do not cook mods into incomplete build
 		return;
 	}
 
