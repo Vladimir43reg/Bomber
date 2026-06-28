@@ -294,7 +294,7 @@ paket-files/
 # JetBrains Rider
 .idea/
 *.sln.iml
-*/Plugins/Developer/RiderLink/
+*RiderLink/
 .run/
 
 # CodeRush personal settings
