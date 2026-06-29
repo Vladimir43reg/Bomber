@@ -78,7 +78,8 @@
 		},
 		{
 			"Name": "SteamSockets",
-			"Enabled": true
+			"Enabled": true,
+			"PlatformAllowList": [ "Win64", "Mac", "Linux" ]
 		},
 		{
 			"Name": "StateTree",
