@@ -158,7 +158,21 @@ void UGfpmPackageEditorSubsystem::PackageGameFeatureIntoBuild(FName GameFeatureN
 		return;
 	}
 
-	CookMod(GameFeatureName, BuildPath, nullptr);
+	if (bIsPackaging)
+	{
+		// Cook already in progress, second request would launch colliding parallel cook against same project
+		UE_LOG(LogGameFeatures, Warning, TEXT("%hs: cook already in progress, ignoring request for mod '%s'"), __FUNCTION__, *GameFeatureName.ToString());
+		return;
+	}
+	bIsPackaging = true;
+
+	CookMod(GameFeatureName, BuildPath, [WeakThis = TWeakObjectPtr(this)]()
+	{
+		if (UGfpmPackageEditorSubsystem* This = WeakThis.Get())
+		{
+			This->bIsPackaging = false;
+		}
+	});
 }
 
 // Packages every registered plugin as separate mod and installs them into build at given path
@@ -168,6 +182,14 @@ void UGfpmPackageEditorSubsystem::PackageAllGameFeaturesIntoBuild(const FString&
 	{
 		return;
 	}
+
+	if (bIsPackaging)
+	{
+		// Cook already in progress, second request would launch colliding parallel cook against same project
+		UE_LOG(LogGameFeatures, Warning, TEXT("%hs: cook already in progress, ignoring Cook All request"), __FUNCTION__);
+		return;
+	}
+	bIsPackaging = true;
 
 	const TArray<FString> RegisteredPlugins = UGfpmUtils::GetAllRegisteredGameFeaturePlugins();
 	TArray<FName> PackageQueue;
@@ -240,11 +262,9 @@ void UGfpmPackageEditorSubsystem::CookMod(FName GameFeatureName, const FString& 
 		// External Data Layer cell binds to host world's COOKED exports, so mod must cook against cooked release, never editor's uncooked one which leaves those host-world imports null at runtime
 		CookProjectMinimal([WeakThis = TWeakObjectPtr(this), GameFeatureName, BuildPath, OnComplete, ReleaseRegistryPath]()
 		{
-			const UGfpmPackageEditorSubsystem* This = WeakThis.Get();
-			if (This
-			    && ensureMsgf(FPaths::FileExists(ReleaseRegistryPath), TEXT("ASSERT: [%i] %hs:\nMinimal project cook produced no release registry at '%s'"), __LINE__, __FUNCTION__, *ReleaseRegistryPath))
+			if (UGfpmPackageEditorSubsystem* This = WeakThis.Get())
 			{
-				WeakThis->CookMod(GameFeatureName, BuildPath, OnComplete);
+				This->OnCookProjectMinimalFinished(GameFeatureName, BuildPath, ReleaseRegistryPath, OnComplete);
 			}
 		});
 		return;
@@ -270,6 +290,13 @@ void UGfpmPackageEditorSubsystem::CookMod(FName GameFeatureName, const FString& 
 			HostWorldStrings.Add(HostWorld.ToString());
 		}
 		CookerOptions += FString::Printf(TEXT(" -Map=%s"), *FString::Join(HostWorldStrings, TEXT("+")));
+
+		// Cook External Data Layers in isolation so host world generates mod cells but its base map package stays out of mod, avoiding IoStore hash collision with base release
+		const TArray<FString> ExternalDataLayerAssetPaths = UGfpmAssetManager::GetExternalDataLayerAssetPaths(ModName);
+		if (!ExternalDataLayerAssetPaths.IsEmpty())
+		{
+			CookerOptions += FString::Printf(TEXT(" -EDLCookFilters=%s"), *FString::Join(ExternalDataLayerAssetPaths, TEXT("+")));
+		}
 	}
 
 	// Architecture is optional, only some platforms expose selection
@@ -365,15 +392,8 @@ void UGfpmPackageEditorSubsystem::CookProjectMinimal(TFunction<void()> OnComplet
 	const FText TaskName = FText::FromString(TEXT("Cooking minimal project for mod"));
 	IUATHelperModule::Get().CreateUatTask(CommandLine, FText::FromString(GfpmPackageEditorInternal::DescribeTarget(Target)), TaskName,
 	    TaskName, nullptr, nullptr,
-	    [OnComplete](FString Result, double)
+	    [OnComplete](FString, double)
 	{
-		if (Result != TEXT("Completed"))
-		{
-			// Minimal project cook failed, do not chain mod cook against missing or partial release
-			return;
-		}
-
-		// UAT completion fires on background thread, finish on game thread so chained mod cook task creates its Slate notification there
 		AsyncTask(ENamedThreads::GameThread, [OnComplete]()
 		{
 			if (OnComplete)
@@ -390,7 +410,8 @@ void UGfpmPackageEditorSubsystem::CookModQueue(const TArray<FName>& Queue, const
 	TArray<FName> MutableQueue = Queue;
 	if (MutableQueue.IsEmpty())
 	{
-		// Every plugin cooked, nothing left
+		// Every plugin cooked, cook-all done, release re-entrancy guard
+		bIsPackaging = false;
 		return;
 	}
 
@@ -426,7 +447,8 @@ void UGfpmPackageEditorSubsystem::HandleCookProjectAllFinished(const FString& Re
 {
 	if (Result != TEXT("Completed"))
 	{
-		// Project cook failed, do not cook mods into incomplete build
+		// Project cook failed, do not cook mods into incomplete build, release re-entrancy guard
+		bIsPackaging = false;
 		return;
 	}
 
@@ -434,4 +456,18 @@ void UGfpmPackageEditorSubsystem::HandleCookProjectAllFinished(const FString& Re
 	{
 		OnComplete();
 	}
+}
+
+// Chains mod cook once minimal project cook produced its release, else releases packaging guard, runs on game thread after minimal cook task completes
+void UGfpmPackageEditorSubsystem::OnCookProjectMinimalFinished(FName GameFeatureName, const FString& BuildPath, const FString& ReleaseRegistryPath, const TFunction<void()>& OnComplete)
+{
+	if (!ensureMsgf(FPaths::FileExists(ReleaseRegistryPath), TEXT("ASSERT: [%i] %hs:\nMinimal project cook produced no release registry at '%s'"), __LINE__, __FUNCTION__, *ReleaseRegistryPath))
+	{
+		// Minimal cook produced no release registry, abort mod cook and release re-entrancy guard
+		bIsPackaging = false;
+		return;
+	}
+
+	// Release registry confirmed, proceed with mod cook
+	CookMod(GameFeatureName, BuildPath, OnComplete);
 }

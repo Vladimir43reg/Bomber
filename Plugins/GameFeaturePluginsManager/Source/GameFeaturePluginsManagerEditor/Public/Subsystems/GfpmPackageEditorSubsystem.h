@@ -56,6 +56,9 @@ protected:
 	FString AdditionalCookerOptions;
 
 private:
+	/** True while cook operation runs, so second Cook or Cook All request cannot launch colliding parallel cook. */
+	bool bIsPackaging = false;
+
 	/** Opens desktop folder picker with given dialog title, empty when developer cancels. Not exposed: editor desktop dialog. */
 	FString PromptBuildDir(const FString& DialogTitle) const;
 
@@ -76,4 +79,7 @@ private:
 
 	/** Drives queue continuation once project cook succeeds, runs on game thread after project cook task completes. Not exposed: TFunction continuation. */
 	void HandleCookProjectAllFinished(const FString& Result, const TFunction<void()>& OnComplete);
+
+	/** Chains mod cook once minimal project cook produced its release, else releases packaging guard, runs on game thread after minimal cook task completes. Not exposed: TFunction continuation. */
+	void OnCookProjectMinimalFinished(FName GameFeatureName, const FString& BuildPath, const FString& ReleaseRegistryPath, const TFunction<void()>& OnComplete);
 };

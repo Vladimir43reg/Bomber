@@ -15,6 +15,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/PackageName.h"
 #include "Misc/Parse.h"
+#include "WorldPartition/DataLayer/ExternalDataLayerAsset.h"
 #include "WorldPartition/DataLayer/ExternalDataLayerHelper.h"
 #include "WorldPartition/DataLayer/ExternalDataLayerUID.h"
 #endif // WITH_EDITOR
@@ -115,6 +116,34 @@ TArray<FName> UGfpmAssetManager::GetExternalDataLayerHostWorlds(const FString& P
 
 	HostWorlds = Worlds.Array();
 	return HostWorlds;
+}
+
+// External Data Layer asset object paths given plugin declares, used to cook those layers in isolation so host base map stays out of mod
+TArray<FString> UGfpmAssetManager::GetExternalDataLayerAssetPaths(const FString& PluginName)
+{
+	TArray<FString> AssetPaths;
+	if (PluginName.IsEmpty())
+	{
+		// No plugin specified, nothing to discover
+		return AssetPaths;
+	}
+
+	const IAssetRegistry& AssetRegistry = Get().GetAssetRegistry();
+
+	FARFilter ExternalDataLayerFilter;
+	ExternalDataLayerFilter.PackagePaths.Add(*FString::Printf(TEXT("/%s"), *PluginName));
+	ExternalDataLayerFilter.bRecursivePaths = true;
+	ExternalDataLayerFilter.ClassPaths.Add(UExternalDataLayerAsset::StaticClass()->GetClassPathName());
+	ExternalDataLayerFilter.bRecursiveClasses = true;
+	ExternalDataLayerFilter.bIncludeOnlyOnDiskAssets = true;
+	TArray<FAssetData> ExternalDataLayerAssets;
+	AssetRegistry.GetAssets(ExternalDataLayerFilter, ExternalDataLayerAssets);
+
+	for (const FAssetData& ExternalDataLayerAsset : ExternalDataLayerAssets)
+	{
+		AssetPaths.Add(ExternalDataLayerAsset.GetSoftObjectPath().ToString());
+	}
+	return AssetPaths;
 }
 
 // External Data Layer host world package names cooked mod injects into, self-discovered from plugin content, command-line -Map= as fallback

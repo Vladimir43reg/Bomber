@@ -26,6 +26,9 @@ public:
 	 * Not Blueprint-exposed: editor-only cook utility returning FName package paths. */
 	static TArray<FName> GetExternalDataLayerHostWorlds(const FString& PluginName);
 
+	/** External Data Layer asset object paths given plugin declares, used to cook those layers in isolation so host base map stays out of mod. */
+	static TArray<FString> GetExternalDataLayerAssetPaths(const FString& PluginName);
+
 protected:
 	/** Adds External Data Layer host worlds cooked plugin injects into to cook set, so their World Partition generators run and plugin content is produced into mod.
 	 * Not Blueprint-exposed: editor-only cook-time virtual parent does not expose. */
