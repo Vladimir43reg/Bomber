@@ -406,6 +406,8 @@ void UBmrMapComponent::OnPostRemoved_Implementation(UObject* DestroyCauser /* = 
 		MeshComponent->EmptyOverrideMaterials();
 	}
 
+	UDalRegistrySubsystem::Get().UnbindFromDataRegistryRows(this);
+
 	SetLocalMesh(nullptr);
 
 	SetCell(FBmrCell::InvalidCell);
