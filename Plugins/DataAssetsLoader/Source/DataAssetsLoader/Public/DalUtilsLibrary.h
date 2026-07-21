@@ -71,6 +71,9 @@ public:
 	/** Returns the current play world as UObject for weak pointer storage */
 	static class UWorld* GetPlayWorld(const UObject* WorldContextObject);
 
+	/** Returns world currently making a level visible. */
+	static class UWorld* GetWorldMakingVisible();
+
 	/** Cached soft property lists per struct type for GatherAllSoftPaths */
 	static TMap<const UScriptStruct*, TArray<const class FSoftObjectProperty*>>& GetSoftPropsCache();
 

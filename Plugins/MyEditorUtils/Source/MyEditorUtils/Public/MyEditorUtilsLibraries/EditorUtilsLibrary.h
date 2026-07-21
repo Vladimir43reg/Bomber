@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #pragma once
 
@@ -23,6 +23,9 @@ public:
 
 	/** Obtains the current world from the editor. */
 	static UWorld* GetEditorWorld();
+
+	/** Returns world currently making a level visible. */
+	static UWorld* GetWorldMakingVisible();
 
 	/** Returns true if currently is cooking the package. */
 	static bool IsCooking();

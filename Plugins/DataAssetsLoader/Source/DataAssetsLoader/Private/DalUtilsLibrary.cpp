@@ -237,7 +237,11 @@ UWorld* UDalUtilsLibrary::GetPlayWorld(const UObject* WorldContextObject)
 #if WITH_EDITOR
 	if (!FoundWorld && GEditor)
 	{
-		FoundWorld = GEditor->GetEditorWorldContext().World();
+		FoundWorld = GetWorldMakingVisible();
+		if (!FoundWorld)
+		{
+			FoundWorld = GEditor->GetEditorWorldContext().World();
+		}
 	}
 #endif
 
@@ -246,6 +250,26 @@ UWorld* UDalUtilsLibrary::GetPlayWorld(const UObject* WorldContextObject)
 		FoundWorld = GWorld;
 	}
 
+	return FoundWorld;
+}
+
+// Returns world currently making a level visible
+UWorld* UDalUtilsLibrary::GetWorldMakingVisible()
+{
+	UWorld* FoundWorld = nullptr;
+	for (const FWorldContext& Context : GEngine->GetWorldContexts())
+	{
+		UWorld* World = Context.World();
+		if (!World
+		    || !World->IsGameWorld()
+		    || !World->HasAnyLevelMakingVisible())
+		{
+			continue;
+		}
+
+		FoundWorld = World;
+		break;
+	}
 	return FoundWorld;
 }
 

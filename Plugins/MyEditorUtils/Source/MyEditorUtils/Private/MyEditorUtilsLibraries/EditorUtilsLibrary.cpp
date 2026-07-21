@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "MyEditorUtilsLibraries/EditorUtilsLibrary.h"
 
@@ -9,6 +9,8 @@
 #include "Editor/UnrealEdEngine.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Engine/DataTable.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
 #include "LevelEditor.h"
 #include "Misc/FileHelper.h"
 #include "SLevelViewport.h"
@@ -43,7 +45,8 @@ UWorld* FEditorUtilsLibrary::GetEditorWorld()
 	UWorld* FoundWorld = nullptr;
 	if (IsPIE())
 	{
-		FoundWorld = GEditor->GetCurrentPlayWorld();
+		UWorld* CurrentPieWorld = GEditor->GetCurrentPlayWorld();
+		FoundWorld = CurrentPieWorld ? CurrentPieWorld : GetWorldMakingVisible();
 		if (!FoundWorld)
 		{
 			const FWorldContext* PIEWorldContext = GEditor->GetPIEWorldContext();
@@ -58,6 +61,26 @@ UWorld* FEditorUtilsLibrary::GetEditorWorld()
 	}
 
 	return !FoundWorld ? GWorld : FoundWorld;
+}
+
+// Returns world currently making a level visible
+UWorld* FEditorUtilsLibrary::GetWorldMakingVisible()
+{
+	UWorld* FoundWorld = nullptr;
+	for (const FWorldContext& Context : GEngine->GetWorldContexts())
+	{
+		UWorld* World = Context.World();
+		if (!World
+		    || !World->IsGameWorld()
+		    || !World->HasAnyLevelMakingVisible())
+		{
+			continue;
+		}
+
+		FoundWorld = World;
+		break;
+	}
+	return FoundWorld;
 }
 
 // Returns true if currently is cooking the package
