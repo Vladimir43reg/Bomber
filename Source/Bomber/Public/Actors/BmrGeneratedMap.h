@@ -217,10 +217,6 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "[Bomber]", meta = (BlueprintProtected, EditCondition = "bOverrideGenerationSettings == true", EditConditionHides))
 	FBmrGeneratedMapSettings OverriddenGenerationSettings = FBmrGeneratedMapSettings::Empty;
 
-	/** The blueprint background actor  */
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "[Bomber]", meta = (BlueprintProtected))
-	TObjectPtr<class UChildActorComponent> CollisionComponent = nullptr;
-
 	/** Cells storage. Is separated from MapComponents array,
 	 * since GridCells is changing rarely (only when the level size is changed).
 	 * It means, each cell represents a tile on the level, even if there is no Map Component on it.

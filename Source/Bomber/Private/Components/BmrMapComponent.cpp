@@ -11,6 +11,7 @@
 #include "DataRegistries/BmrLevelActorRow.h"
 #include "MyUtilsLibraries/GameplayUtilsLibrary.h"
 #include "MyUtilsLibraries/UtilsLibrary.h"
+#include "Subsystems/BmrCellCollisionSubsystem.h"
 #include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 #include "UtilityLibraries/BmrCellUtilsLibrary.h"
 
@@ -19,7 +20,6 @@
 #endif
 
 // UE
-#include "Components/BoxComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/EngineTypes.h"
@@ -58,6 +58,14 @@ void UBmrMapComponent::SetCell(const FBmrCell& Cell)
 
 	// Set new cell locally, is not replicated here, but in the Map Components Container which is changed by the Generated Map
 	LocalCell = Cell;
+
+	ApplyCell(PreviousCell);
+}
+
+// Applies and broadcasts own cell change
+void UBmrMapComponent::ApplyCell(const FBmrCell& PreviousCell)
+{
+	UBmrCellCollisionSubsystem::GetCellCollisionSubsystemChecked().TryBroadcastCellOverlap(this, PreviousCell);
 
 	TryDisplayOwnedCell();
 
@@ -157,32 +165,6 @@ void UBmrMapComponent::TryApplyMeshFromRow(FName RowName)
 }
 
 /*********************************************************************************************
- * Collision
- ********************************************************************************************* */
-
-// Returns current collisions data of the Box Collision Component
-FCollisionResponseContainer UBmrMapComponent::GetCollisionResponses() const
-{
-	return BoxCollisionComponent ? BoxCollisionComponent->GetCollisionResponseToChannels() : FCollisionResponseContainer(ECR_MAX);
-}
-
-// Set new collisions data for any channel of the Box Collision Component
-void UBmrMapComponent::SetCollisionResponses(const FCollisionResponseContainer& NewResponses)
-{
-	const AActor* Owner = GetOwner();
-	if (!Owner
-	    || !GetActorDataAssetChecked().IsEnabledCollision()
-	    || NewResponses == ECR_MAX
-	    || NewResponses == GetCollisionResponses())
-	{
-		return;
-	}
-
-	checkf(BoxCollisionComponent, TEXT("ERROR: [%i] %hs:\n'BoxCollisionComponent' is null!"), __LINE__, __FUNCTION__);
-	BoxCollisionComponent->SetCollisionResponseToChannels(NewResponses);
-}
-
-/*********************************************************************************************
  * Data Asset
  ********************************************************************************************* */
 
@@ -197,6 +179,12 @@ const UBmrLevelActorDataAsset& UBmrMapComponent::GetActorDataAssetChecked() cons
 EBmrActorType UBmrMapComponent::GetActorType() const
 {
 	return ActorDataAsset ? ActorDataAsset->GetActorType() : EBmrActorType::None;
+}
+
+// Returns true when this level actor participates in grid collision, per its data asset
+bool UBmrMapComponent::IsCollisionEnabledInDataAsset() const
+{
+	return ActorDataAsset && ActorDataAsset->IsEnabledCollision();
 }
 
 /*********************************************************************************************
@@ -240,20 +228,6 @@ void UBmrMapComponent::OnRegister()
 	if (!ensureMsgf(ActorDataAsset, TEXT("ASSERT: 'The Actor Data Asset' was not found for '%s' actor!"), *GetNameSafe(Owner)))
 	{
 		return;
-	}
-
-	// Initialize the Box Collision Component
-	if (ActorDataAsset->IsEnabledCollision())
-	{
-		BoxCollisionComponent = NewObject<UBoxComponent>(Owner);
-		BoxCollisionComponent->AttachToComponent(Owner->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-		BoxCollisionComponent->SetBoxExtent(ActorDataAsset->GetCollisionExtent());
-		BoxCollisionComponent->IgnoreActorWhenMoving(Owner, true);
-		SetCollisionResponses(ActorDataAsset->GetCollisionResponse());
-#if WITH_EDITOR
-		BoxCollisionComponent->SetHiddenInGame(!bShouldShowRenders);
-#endif
-		BoxCollisionComponent->RegisterComponent();
 	}
 
 	// Initialize mesh component
@@ -309,13 +283,6 @@ void UBmrMapComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 			UBmrUnrealEdEngine::GOnAIUpdatedDelegate.Broadcast();
 #endif
 		}
-
-		// Delete spawned collision component
-		if (IsValid(BoxCollisionComponent))
-		{
-			BoxCollisionComponent->DestroyComponent();
-			BoxCollisionComponent = nullptr;
-		}
 	}
 
 	Super::OnComponentDestroyed(bDestroyingHierarchy);
@@ -342,10 +309,6 @@ bool UBmrMapComponent::OnAdded_Implementation()
 	}
 
 	TryDisplayOwnedCell();
-
-	// Apply default collision
-	const ECollisionResponse CollisionResponse = GetActorDataAssetChecked().GetCollisionResponse();
-	SetCollisionResponses(CollisionResponse);
 
 	// Disable tick by default: actor itself might re-enable it in runtime like from game state change
 	Owner->SetActorTickEnabled(false);
@@ -392,8 +355,6 @@ void UBmrMapComponent::OnPostRemoved_Implementation(UObject* DestroyCauser /* = 
 	}
 
 	// -- Clear and discard all runtime changes
-
-	SetCollisionResponses(ECR_Ignore);
 
 	if (UUtilsLibrary::IsEditor())
 	{

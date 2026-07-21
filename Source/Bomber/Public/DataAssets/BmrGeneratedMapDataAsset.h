@@ -26,10 +26,6 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
 	const FORCEINLINE FBmrGeneratedMapSettings& GetGenerationSettings() const { return GenerationSettings; }
 
-	/** Returns asset that contains scalable collision. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	FORCEINLINE TSubclassOf<class AActor> GetCollisionsAssetClass() const { return CollisionsAsset; }
-
 	/** Returns height offset to spawn actors above the level to avoid collision issues on spawn. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
 	FORCEINLINE float GetActorsHeightOffset() const { return ActorsHeightOffset; }
@@ -39,10 +35,6 @@ protected:
 	 * These settings might be overridden by Class Defaults of the Generated Map itself. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (BlueprintProtected, ShowOnlyInnerProperties))
 	FBmrGeneratedMapSettings GenerationSettings;
-
-	/** Asset that contains scalable collision. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (BlueprintProtected, ShowOnlyInnerProperties))
-	TSubclassOf<class AActor> CollisionsAsset = nullptr;
 
 	/** Height offset to spawn actors above the level to avoid collision issues on spawn. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (BlueprintProtected, ShowOnlyInnerProperties))

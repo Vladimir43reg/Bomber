@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #pragma once
 
@@ -406,6 +406,11 @@ public:
 	static bool IsCellHasAnyMatchingActor(
 	    const FBmrCell& Cell,
 	    UPARAM(meta = (Bitmask, BitmaskEnum = "/Script/Bomber.EBmrActorType")) int32 ActorsTypesBitmask);
+
+	/** Returns true if cell blocks entry: any actor on it has enabled collision, off-grid cell always blocks.
+	 * Prevents entering blocked cell only, never displaces an actor already standing on it. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]", meta = (AutoCreateRefTerm = "Cell"))
+	static bool IsCellBlocked(const FBmrCell& Cell);
 
 	/** Returns true if at least one cell along specified is empty, so it does not have own actor.*/
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]", meta = (AutoCreateRefTerm = "Cell", Keywords = "Free"))

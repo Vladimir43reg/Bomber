@@ -13,9 +13,9 @@
  * Is part of the UBmrBombPlaceAbility and is responsible mainly for registration and visuals:
  * - Contains the Map Component to register own location on the Generated Map, so it can be seen by other systems (like AI, other bombs, etc.).
  * - Applies mesh and material based on the instigator (player who placed the bomb).
- * - Applies collisions to block other players.
  *
  * It does NOT handle detonation timer, damage application, explosion VFXs/SFXs, etc. - all that is handled by ability, gameplay effects and cues.
+ * It also does NOT block players, grid collision resolves that generically via cell occupancy.
  *
  * @see Access its data with UBmrBombDataAsset (Content/Bomber/DataAssets/DA_Bomb).
  */
@@ -120,37 +120,4 @@ protected:
 	/** Is used for cleaning up the bomb's data after it was removed from the level. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnPostRemovedFromLevel(UBmrMapComponent* InMapComponent, UObject* DestroyCauser);
-
-	/** Is called when character leaves the bomb to update collision response. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
-	void OnAnyPawnCellExit(UBmrMapComponent* PlayerMapComponent, const FBmrCell& NewCell, const FBmrCell& PreviousCell);
-
-	/*********************************************************************************************
-	 * Custom Collision Response
-	 ********************************************************************************************* */
-public:
-	/** Returns true if this bomb was spawned for server replica of client (SROC), meaning server is processing bomb placed by client. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	bool IsServerReplicaOfClient() const;
-
-	/** Sets actual collision response to all players for this bomb. */
-	UFUNCTION(BlueprintCallable, Category = "[Bomber]")
-	void InitCollisionResponseToAllPlayers();
-
-	/** Takes your container and returns is with new specified response for player by its specified ID.
-	 * @param InOutCollisionResponses Will contain requested response.
-	 * @param PlayerId Player to set response.
-	 * @param NewResponse New response to set. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	static void GetCollisionResponseToPlayerByID(FCollisionResponseContainer& InOutCollisionResponses, int32 PlayerId, ECollisionResponse NewResponse);
-
-protected:
-	/** Attempts to bind bomb to wait for instigator pawn to reach bomb cell before initializing collision.
-	 * @return true if bomb was bound successfully and is now waiting for pawn to reach bomb cell. */
-	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
-	bool TryBindOnInstigatorReachedBombCell();
-
-	/** Called when instigator pawn reaches the bomb cell, initializes collision. */
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
-	void OnInstigatorPawnCellEnter(UBmrMapComponent* InMapComponent, const FBmrCell& NewCell, const FBmrCell& PreviousCell);
 };

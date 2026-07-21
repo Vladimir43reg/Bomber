@@ -29,10 +29,6 @@ public:
 	ABmrPawn();
 
 protected:
-	/** Is the root component for this actor, used for collision. */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "[Bomber]", meta = (BlueprintProtected))
-	TObjectPtr<class UCapsuleComponent> CapsuleComponent = nullptr;
-
 	/** The MapComponent manages this actor on the Generated Map */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "[Bomber]", meta = (BlueprintProtected))
 	TObjectPtr<class UBmrMapComponent> MapComponent = nullptr;
@@ -103,10 +99,6 @@ protected:
 	 * Protected functions
 	 ********************************************************************************************* */
 protected:
-	/** Updates collision object type by current character ID. */
-	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
-	void UpdateCollisionObjectType();
-
 	/** Sets current config: each character has its own configuration, like different starting attributes. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "[Bomber]", meta = (BlueprintProtected))
 	void ApplyPreset();

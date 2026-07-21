@@ -7,9 +7,6 @@
 // Bomber
 #include "Bomber.h" // EBmrActorType
 
-// UE
-#include "Engine/EngineTypes.h" // ECollisionResponse
-
 #include "BmrLevelActorDataAsset.generated.h"
 
 /**
@@ -86,20 +83,13 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
 	const FORCEINLINE FVector& GetCollisionExtent() const { return CollisionExtent; }
 
-	/** Returns a response type of the collision box of an actor, whose data is described by this data asset. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	FORCEINLINE ECollisionResponse GetCollisionResponse() const { return CollisionResponse; }
-
 protected:
-	/** If enabled, the Box Collision component is added to actors, whose data is described by this data asset. */
+	/** If enabled, actor described by this data asset blocks its cell on grid.
+	 * Blocking prevents entering cell but never pushes out pawn already standing on it, so such pawn still leaves freely, but never enters again. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Collision", meta = (BlueprintProtected, ShowOnlyInnerProperties))
 	bool bEnableCollision = true;
 
 	/** Extent size of the collision box of an actor, whose data is described by this data asset. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Collision", meta = (BlueprintProtected, ShowOnlyInnerProperties, EditCondition = "bEnableCollision"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Collision", meta = (BlueprintProtected, ShowOnlyInnerProperties))
 	FVector CollisionExtent = FVector(100.f);
-
-	/** Response type of the collision box of an actor, whose data is described by this data asset. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Collision", meta = (BlueprintProtected, ShowOnlyInnerProperties, EditCondition = "bEnableCollision"))
-	TEnumAsByte<ECollisionResponse> CollisionResponse = ECR_Overlap;
 };

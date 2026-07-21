@@ -20,6 +20,9 @@ typedef TSet<class UBmrMapComponent*> FMapComponents;
  * It encapsulates the common functionality needed by different Level Actors, including:
  * - Positioning the owning actor within the grid, so GeneratedMap manages each Level Actor in abstract way through the MapComponent.
  * - Visual representation management through mesh and material settings.
+ * 
+ * Must contain only self-registration and removal setup (cell mirroring, mesh forwarding and lifecycle broadcasts)
+ * Never host gameplay runtime logic here (collision, blocking, per-player state), such logic must belong to owning actor or own subsystem.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class BOMBER_API UBmrMapComponent final : public UActorComponent
@@ -97,6 +100,11 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Transient, AdvancedDisplay, Category = "[Bomber]", meta = (BlueprintProtected, ShowOnlyInnerProperties))
 	FBmrCell LocalCell = FBmrCell::InvalidCell;
 
+	/** Applies and broadcasts own cell change.
+	 * @param PreviousCell - cell owner occupied before this change. */
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected, AutoCreateRefTerm = "PreviousCell"))
+	void ApplyCell(const FBmrCell& PreviousCell);
+
 	/*********************************************************************************************
 	 * Mesh
 	 * Is responsible for visual representation of the owner actor.
@@ -144,27 +152,6 @@ protected:
 	TObjectPtr<class UMeshComponent> MeshComponent = nullptr;
 
 	/*********************************************************************************************
-	 * Collision
-	 ********************************************************************************************* */
-public:
-	/** Returns the collision component. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	FORCEINLINE class UBoxComponent* GetBoxCollisionComponent() const { return BoxCollisionComponent; }
-
-	/** Returns current collisions data of the Box Collision Component. */
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
-	FCollisionResponseContainer GetCollisionResponses() const;
-
-	/** Set new collisions data for any channel of the Box Collision Component, is allowed to call on both server and clients. */
-	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (AutoCreateRefTerm = "NewResponses"))
-	void SetCollisionResponses(const FCollisionResponseContainer& NewResponses);
-
-protected:
-	/** The Collision Component, is attached to an owner. */
-	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "[Bomber]", meta = (BlueprintProtected))
-	TObjectPtr<class UBoxComponent> BoxCollisionComponent = nullptr;
-
-	/*********************************************************************************************
 	 * Data Asset
 	 ********************************************************************************************* */
 public:
@@ -176,6 +163,10 @@ public:
 	/** Returns the type of the owner: Player, Bomb, etc. */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
 	EBmrActorType GetActorType() const;
+
+	/** Returns true when this level actor participates in grid collision, per its data asset. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "[Bomber]")
+	bool IsCollisionEnabledInDataAsset() const;
 
 protected:
 	/** Represents the archetype of the owner, is set automatically on spawn.

@@ -29,7 +29,7 @@
 // UE
 #include "AbilitySystemComponent.h"
 #include "Animation/AnimInstance.h"
-#include "Components/CapsuleComponent.h"
+#include "Components/SceneComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "GameplayEffect.h"
 
@@ -52,8 +52,7 @@ ABmrPawn::ABmrPawn()
 	// Do not rotate player by camera
 	bUseControllerRotationYaw = false;
 
-	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("CollisionCylinder"));
-	RootComponent = CapsuleComponent;
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("DefaultSceneRoot"));
 
 	MapComponent = CreateDefaultSubobject<UBmrMapComponent>(TEXT("MapComponent"));
 
@@ -207,8 +206,6 @@ void ABmrPawn::OnAddedToLevel_Implementation(UBmrMapComponent* InMapComponent)
 		PlayerName3DWidgetComponent->Init(MyPlayerState);
 	}
 
-	UpdateCollisionObjectType();
-
 	// Spawn or destroy controller of specific ai with enabled visualization
 #if WITH_EDITOR // [IsEditorNotPieWorld]
 	if (UUtilsLibrary::IsEditorNotPieWorld() // [IsEditorNotPieWorld] only
@@ -338,39 +335,6 @@ void ABmrPawn::OnPawnReady_Implementation(const FGameplayEventData& Payload)
 /*********************************************************************************************
  * Protected functions
  ********************************************************************************************* */
-
-// Updates collision object type by current character ID
-void ABmrPawn::UpdateCollisionObjectType()
-{
-	const int32 PlayerId = GetPlayerId();
-	if (PlayerId < 0) // Might be replicating yet
-	{
-		return;
-	}
-
-	// Set the object collision type
-	UCapsuleComponent* CapsuleComp = CastChecked<UCapsuleComponent>(RootComponent);
-	ECollisionChannel CollisionObjectType = CapsuleComp->GetCollisionObjectType();
-	switch (PlayerId)
-	{
-		case 0:
-			CollisionObjectType = ECC_Player0;
-			break;
-		case 1:
-			CollisionObjectType = ECC_Player1;
-			break;
-		case 2:
-			CollisionObjectType = ECC_Player2;
-			break;
-		case 3:
-			CollisionObjectType = ECC_Player3;
-			break;
-		default:
-			break;
-	}
-
-	CapsuleComp->SetCollisionObjectType(CollisionObjectType);
-}
 
 // Sets current config: each character has its own configuration, like different starting attributes
 void ABmrPawn::ApplyPreset()

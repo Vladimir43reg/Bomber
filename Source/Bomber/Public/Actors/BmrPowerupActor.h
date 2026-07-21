@@ -70,9 +70,11 @@ protected:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
 	void OnAddedToLevel(UBmrMapComponent* InMapComponent);
 
-	/** Triggers when this powerup starts overlap a player character to destroy itself. */
+	/** Called when another level actor enters listened cell.
+	 * @param OverlappingActor - map component of level actor that entered cell.
+	 * @param Cell - cell being listened to. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))
-	void OnPowerupBeginOverlap(AActor* OverlappedActor, AActor* OtherActor);
+	void OnPowerupBeginOverlap(UBmrMapComponent* OverlappingActor, const struct FBmrCell& Cell);
 
 	/** Called when this level actor is destroyed from the Generated Map. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected))

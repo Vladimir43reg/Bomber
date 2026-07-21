@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov.
+// Copyright (c) Yevhenii Selivanov.
 
 #include "Actors/BmrPowerupActor.h"
 
@@ -6,11 +6,14 @@
 #include "Actors/BmrGeneratedMap.h"
 #include "Components/BmrMapComponent.h"
 #include "DataRegistries/BmrPowerupRow.h"
+#include "Structures/BmrCell.h"
 #include "Structures/BmrGameplayTags.h"
+#include "Subsystems/BmrCellCollisionSubsystem.h"
 #include "Subsystems/GlobalMessageSubsystem.h"
 
 // UE
 #include "Engine/StaticMesh.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrPowerupActor)
@@ -101,7 +104,9 @@ void ABmrPowerupActor::OnAddedToLevel_Implementation(UBmrMapComponent* InMapComp
 	checkf(InMapComponent, TEXT("ERROR: [%i] %hs:\n'MapComponent' is null!"), __LINE__, __FUNCTION__);
 	InMapComponent->OnPostRemovedFromLevel.AddUniqueDynamic(this, &ThisClass::OnPostRemovedFromLevel);
 
-	OnActorBeginOverlap.AddUniqueDynamic(this, &ABmrPowerupActor::OnPowerupBeginOverlap);
+	FBmrCellOverlapDelegate OverlapDelegate;
+	OverlapDelegate.BindDynamic(this, &ThisClass::OnPowerupBeginOverlap);
+	UBmrCellCollisionSubsystem::GetCellCollisionSubsystemChecked().OnCellBeginOverlap(InMapComponent->GetCell(), OverlapDelegate);
 
 	// Rand the Powerup type if not set yet
 	if (HasAuthority()
@@ -114,18 +119,21 @@ void ABmrPowerupActor::OnAddedToLevel_Implementation(UBmrMapComponent* InMapComp
 	}
 }
 
-// Triggers when this Powerup starts overlap a player character to destroy itself
-void ABmrPowerupActor::OnPowerupBeginOverlap_Implementation(AActor* OverlappedActor, AActor* OtherActor)
+// Called when another level actor enters listened cell
+void ABmrPowerupActor::OnPowerupBeginOverlap_Implementation(UBmrMapComponent* OverlappingActor, const FBmrCell& Cell)
 {
-	if (IsHidden())
+	const APawn* OverlappingPawn = OverlappingActor ? OverlappingActor->GetOwner<APawn>() : nullptr;
+	if (!OverlappingPawn
+	    || IsHidden()
+	    || PowerupTag == FBmrPowerupTag::None)
 	{
-		// Might happen on predicted client when the Powerup is already collected
+		// Likely non-pawn overlap (bomb/item), already collected on predicted client, or cell entered before powerup tag replicated (server still drives authoritative collection)
 		return;
 	}
 
 	FGameplayEventData EventData;
 	EventData.EventTag = BmrGameplayTags::Event::Powerup_Collected;
-	EventData.Instigator = OtherActor;
+	EventData.Instigator = OverlappingPawn;
 	EventData.Target = this;
 	EventData.TargetTags.AddTag(PowerupTag);
 	UGlobalMessageSubsystem::BroadcastGlobalMessage(EventData);
@@ -137,7 +145,10 @@ void ABmrPowerupActor::OnPostRemovedFromLevel_Implementation(UBmrMapComponent* I
 	checkf(MapComponent, TEXT("ERROR: [%i] %hs:\n'MapComponentInternal' is null!"), __LINE__, __FUNCTION__);
 	MapComponent->OnPostRemovedFromLevel.RemoveAll(this);
 
-	OnActorBeginOverlap.RemoveAll(this);
+	if (UBmrCellCollisionSubsystem* CellCollisionSubsystem = UBmrCellCollisionSubsystem::GetCellCollisionSubsystem())
+	{
+		CellCollisionSubsystem->RemoveCellListener(this);
+	}
 
 	SetPowerupTag(FBmrPowerupTag::None);
 }

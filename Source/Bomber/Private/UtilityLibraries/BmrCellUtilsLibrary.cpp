@@ -1,4 +1,4 @@
-﻿// Copyright (c) Yevhenii Selivanov
+// Copyright (c) Yevhenii Selivanov
 
 #include "UtilityLibraries/BmrCellUtilsLibrary.h"
 
@@ -285,6 +285,28 @@ bool UBmrCellUtilsLibrary::IsCellHasAnyMatchingActor(const FBmrCell& Cell, int32
 	FBmrCells NonEmptyCells{Cell};
 	IntersectCellsByTypes(NonEmptyCells, ActorsTypesBitmask, bIntersectAllIfEmpty);
 	return NonEmptyCells.Contains(Cell);
+}
+
+// Returns true if cell blocks entry: any actor on it has enabled collision, off-grid cell always blocks
+bool UBmrCellUtilsLibrary::IsCellBlocked(const FBmrCell& Cell)
+{
+	if (!IsCellExistsOnLevel(Cell))
+	{
+		// Cell is outside level, meaning it is always blocked
+		return true;
+	}
+
+	FMapComponents MapComponentsOnCell;
+	UBmrActorUtilsLibrary::GetLevelActorsOnCells(/*out*/ MapComponentsOnCell, {Cell});
+	for (const UBmrMapComponent* MapComponentIt : MapComponentsOnCell)
+	{
+		if (MapComponentIt && MapComponentIt->IsCollisionEnabledInDataAsset())
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 // Returns true if at least one cell is empty, so it does not have own actor

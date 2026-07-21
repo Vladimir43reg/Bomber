@@ -23,6 +23,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "[Bomber]", meta = (BlueprintProtected, ClampMin = "0", UIMin = "0"))
 	float SkateSpeedBonus = 100.f;
 
+	/** Height above grid plane pawn stands at. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "[Bomber]", meta = (BlueprintProtected, ClampMin = "0", UIMin = "0"))
+	float StandingHalfHeight = 88.f;
+
 	/** Cached initial max speed when the mode is registered.
 	 * Used for calculating the speed bonus from Skates. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "[Bomber]", meta = (BlueprintProtected))
@@ -41,4 +45,17 @@ protected:
 
 	/** Is overridden to handle walking-related movement. */
 	virtual void GenerateMove_Implementation(const FMoverSimContext& SimContext, const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove) const override;
+
+	/** Called every simulation tick. */
+	virtual void SimulationTick_Implementation(const FSimulationTickParams& Params, FMoverTickEndData& OutputState) override;
+
+	/*********************************************************************************************
+	 * Movement
+	 ********************************************************************************************* */
+protected:
+	/** Moves pawn one simulation step along grid plane: velocity arrives already grid-clamped, so this only orients it, steps with Z pinned to cell height, and reports flat walkable floor so pawn never falls.
+	 * @param Params - Simulation step context from Mover.
+	 * @param OutputState - Sync state and movement result this step writes into. */
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected, AutoCreateRefTerm = "Params"))
+	void MoveAlongGridPlane(const FSimulationTickParams& Params, UPARAM(ref) FMoverTickEndData& OutputState);
 };

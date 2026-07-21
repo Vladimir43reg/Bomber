@@ -76,10 +76,6 @@ ABmrGeneratedMap::ABmrGeneratedMap()
 	RootComponent->SetRelativeScale3D_Direct(DefaultRelativeScale);
 	RootComponent->SetIsReplicated(true); // Enable to replicate own transform and attached level actors
 
-	// Find blueprint class of the background
-	CollisionComponent = CreateDefaultSubobject<UChildActorComponent>(TEXT("Collision Component"));
-	CollisionComponent->SetupAttachment(RootComponent);
-
 	// Default camera class
 	CameraComponent = CreateDefaultSubobject<UBmrCameraComponent>(TEXT("Camera Component"));
 	CameraComponent->SetupAttachment(RootComponent);
@@ -695,15 +691,6 @@ void ABmrGeneratedMap::OnConstructionGeneratedMap_Implementation(const FTransfor
 	{
 		// Attempted to construct before Generated Map is fully initialized, will reconstruct later
 		return;
-	}
-
-	// Create the background blueprint child actor
-	if (CollisionComponent // Is accessible
-	    && !CollisionComponent->GetChildActor()) // Is not created yet
-	{
-		const TSubclassOf<AActor> CollisionsAssetClass = UBmrGeneratedMapDataAsset::Get().GetCollisionsAssetClass();
-		CollisionComponent->SetChildActorClass(CollisionsAssetClass);
-		CollisionComponent->CreateChildActor();
 	}
 
 	// If generation settings are overridden, validate the generator

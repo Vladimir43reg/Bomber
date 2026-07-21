@@ -10,18 +10,21 @@
 #include "DataAssets/BmrGeneratedMapDataAsset.h"
 #include "DataAssets/BmrPlayerDataAsset.h"
 #include "GameFramework/BmrGameState.h"
+#include "Structures/BmrCell.h"
 #include "Structures/BmrGameStateTag.h"
 #include "Structures/BmrGameplayTags.h"
 #include "Structures/BmrMoverSyncState.h"
 #include "Subsystems/GlobalMessageSubsystem.h"
 #include "UtilityLibraries/BmrCellUtilsLibrary.h"
+#include "UtilityLibraries/BmrMovementUtilsLibrary.h"
 
 // UE
 #include "AbilitySystemGlobals.h"
-#include "Components/CapsuleComponent.h"
 #include "DefaultMovementSet/InstantMovementEffects/BasicInstantMovementEffects.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "InputActionValue.h"
+#include "MoverDataModelTypes.h"
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(BmrMoverComponent)
 
@@ -78,9 +81,15 @@ void UBmrMoverComponent::SetBlockMovement(bool bShouldBlock)
 	}
 }
 
-// Returns true if movement is currently disabled
+// Returns true if move inputs are currently ignored and the owner pawn can not move, from blocking gameplay effect or grid not built yet on this endpoint
 bool UBmrMoverComponent::IsBlockedMovement() const
 {
+	if (UBmrCellUtilsLibrary::GetAllCellsOnLevelAsArray().IsEmpty())
+	{
+		// Can happen before generated map constructed, so nothing would block pawn
+		return true;
+	}
+
 	const UAbilitySystemComponent* ASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetOwner());
 	return !ASC || ASC->HasMatchingGameplayTag(BmrGameplayTags::GameplayEffect::Block::Movement);
 }
@@ -256,12 +265,7 @@ void UBmrMoverComponent::OnTeleported_Implementation(const FVector& FromLocation
 // Called between movement mode's GenerateMove and SimulationTick on every endpoint, with chance to rewrite proposed move before it is consumed
 void UBmrMoverComponent::OnProcessGeneratedMove_Implementation(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove)
 {
-	if (IsBlockedMovement())
-	{
-		// Block is applied but velocity might be already accumulated, reset it
-		OutProposedMove.LinearVelocity = FVector::ZeroVector;
-		OutProposedMove.AngularVelocityDegrees = FVector::ZeroVector;
-	}
+	ClampMoveByGridCollision(StartState, TimeStep, OutProposedMove);
 }
 
 // Is called by Move Input Action when player pressed the move input button, e.g: WASD or Arrow keys
@@ -285,4 +289,36 @@ void UBmrMoverComponent::OnMoveInputCompleted_Implementation(const FInputActionV
 void UBmrMoverComponent::OnSkateAttributeChanged(const FOnAttributeChangeData& OnAttributeChangeData)
 {
 	CachedSkatePowerupAttribute = OnAttributeChangeData.NewValue;
+}
+
+/*********************************************************************************************
+ * Movement
+ ********************************************************************************************* */
+
+// Clamps proposed velocity so pawn never enters blocked cell nor leaves grid, and settles it flush against whatever stopped it
+void UBmrMoverComponent::ClampMoveByGridCollision(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, FProposedMove& OutProposedMove)
+{
+	if (IsBlockedMovement())
+	{
+		// Movement can already be blocked, zero velocity so predicted pawn stays put
+		OutProposedMove.LinearVelocity = FVector::ZeroVector;
+		OutProposedMove.AngularVelocityDegrees = FVector::ZeroVector;
+		return;
+	}
+
+	const FMoverDefaultSyncState* StartingSyncState = StartState.SyncState.SyncStateCollection.FindDataByType<FMoverDefaultSyncState>();
+	checkf(StartingSyncState, TEXT("ERROR: [%i] %hs:\n'StartingSyncState' is null!"), __LINE__, __FUNCTION__);
+	const FVector StartLocation = StartingSyncState->GetLocation_WorldSpace();
+
+	const float DeltaSeconds = TimeStep.StepMs * 0.001f;
+
+	// Grid-based blocking: pure function of pawn position and cell occupancy index, so it resolves identically on server and predicting client and never needs reconciling, unlike per-player physics response
+	const APawn* InOwnerPawn = CastChecked<APawn>(GetOwner());
+	bool bClamped = false;
+	OutProposedMove.LinearVelocity = UBmrMovementUtilsLibrary::GetGridClampedVelocity(InOwnerPawn, StartLocation, OutProposedMove.LinearVelocity, DeltaSeconds, /*out*/ bClamped);
+	if (bClamped)
+	{
+		// Any clamp resolves to axis-aligned grid motion, spin has no meaning while sliding on blocker
+		OutProposedMove.AngularVelocityDegrees = FVector::ZeroVector;
+	}
 }

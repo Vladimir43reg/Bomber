@@ -113,4 +113,15 @@ protected:
 
 	/** Is called when the Skate attribute is changed, e.g: when player picked up a Skate powerup. */
 	void OnSkateAttributeChanged(const struct FOnAttributeChangeData& OnAttributeChangeData);
+
+	/*********************************************************************************************
+	 * Movement
+	 ********************************************************************************************* */
+protected:
+	/** Clamps proposed velocity so pawn never enters blocked cell nor leaves grid, and settles it flush against whatever stopped it.
+	 * @param StartState - Simulation state this step starts from.
+	 * @param TimeStep - Simulation step being proposed.
+	 * @param OutProposedMove - Proposed move this clamp rewrites in place. */
+	UFUNCTION(BlueprintCallable, Category = "[Bomber]", meta = (BlueprintProtected, AutoCreateRefTerm = "StartState,TimeStep"))
+	void ClampMoveByGridCollision(const FMoverTickStartData& StartState, const FMoverTimeStep& TimeStep, UPARAM(ref) FProposedMove& OutProposedMove);
 };
