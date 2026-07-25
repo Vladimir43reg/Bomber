@@ -87,11 +87,15 @@ void ABmrPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Set input focus on the game window
-	FSlateApplication::Get().SetAllUserFocusToGameViewport(EFocusCause::WindowActivate);
+	// Slate exists only for genuinely local controller, dedicated server has none for any connected player
+	if (IsLocalController())
+	{
+		// Set input focus on the game window
+		FSlateApplication::Get().SetAllUserFocusToGameViewport(EFocusCause::WindowActivate);
 
-	// Prevents built-in slate input on UMG
-	SetUIInputIgnored();
+		// Prevents built-in slate input on UMG
+		SetUIInputIgnored();
+	}
 
 	UDalSubsystem::Get().ListenForDataAsset<UBmrPlayerInputDataAsset>(this, &ThisClass::OnPlayerInputDataAssetLoaded);
 

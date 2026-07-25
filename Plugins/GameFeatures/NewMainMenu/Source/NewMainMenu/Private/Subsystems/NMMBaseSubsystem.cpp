@@ -18,6 +18,9 @@
 #include "Subsystems/GlobalMessageSubsystem.h"
 #include "UtilityLibraries/BmrBlueprintFunctionLibrary.h"
 
+// UE
+#include "Engine/World.h"
+
 #include UE_INLINE_GENERATED_CPP_BY_NAME(NMMBaseSubsystem)
 
 // Returns this Subsystem, is checked and wil crash if can't be obtained
@@ -48,6 +51,14 @@ FNmmStateTag UNMMBaseSubsystem::GetPredictedMenuState() const
 	if (LoaderSubsystem && LoaderSubsystem->HasPendingTagDrivenActivations())
 	{
 		return FNmmStateTag::None;
+	}
+
+	// True dedicated server never runs NMMSpotComponent::BeginPlay, spot readiness can never be satisfied, nothing to wait for
+	const UWorld* World = GetWorld();
+	checkf(World, TEXT("ERROR: [%i] %hs:\n'World' is null!"), __LINE__, __FUNCTION__);
+	if (World->IsNetMode(NM_DedicatedServer))
+	{
+		return FNmmStateTag::BasicMenu;
 	}
 
 	// No rows means no GFP cinematics at all (DR itself loads immediately with no softs), menu is ready immediately
